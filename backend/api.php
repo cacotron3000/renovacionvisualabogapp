@@ -497,6 +497,20 @@ function formatearFechaCorreo(?string $raw): string {
     return $dt ? $dt->format('d/m/Y') : $ymd;
 }
 
+function obtenerNombreClientePorId(PDO $pdo, $clienteId): ?string {
+    if ($clienteId === null || $clienteId === '') return null;
+    $id = (int) $clienteId;
+    if ($id <= 0) return null;
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+    $stmt->execute(['table' => 'clientes', 'id' => $id]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+    $data = json_decode($row['payload'] ?? 'null', true);
+    if (!is_array($data)) return null;
+    $nombre = trim((string) ($data['nombre'] ?? $data['razonSocial'] ?? ''));
+    return $nombre !== '' ? $nombre : null;
+}
+
 function obtenerRecordsTabla(PDO $pdo, string $table): array {
     $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table');
     $stmt->execute(['table' => $table]);
@@ -725,6 +739,7 @@ switch ($action) {
         $titulo = trim((string) ($task['titulo'] ?? $task['texto'] ?? 'Tarea'));
         $vence = formatearFechaCorreo((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
         $prioridad = trim((string) ($task['prioridad'] ?? 'Sin prioridad'));
+        $clienteNombre = obtenerNombreClientePorId($pdo, $task['clienteId'] ?? null);
         $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
         if (!is_array($asignados)) $asignados = [$asignados];
         $destinatarios = obtenerDestinatariosAsignados($pdo, $asignados);
@@ -737,6 +752,7 @@ switch ($action) {
             $subject = "Nueva tarea asignada: {$titulo}";
             $body = "<p>Estimado {$saludoHtml}, se te asignó una tarea en Abogapp.</p>"
                 . "<p><strong>Título:</strong> " . htmlspecialchars($titulo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . ($clienteNombre ? "<strong>Cliente:</strong> " . htmlspecialchars($clienteNombre, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>" : "")
                 . "<strong>Vencimiento:</strong> " . htmlspecialchars($vence, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
                 . "<strong>Prioridad:</strong> " . htmlspecialchars($prioridad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
                 . "<strong>ID:</strong> " . htmlspecialchars($taskId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</p>"
