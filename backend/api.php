@@ -292,9 +292,16 @@ function gcalEventToAudiencia(array $event): array {
     foreach (['preparatoria', 'monitorio', 'alegato', 'juicio'] as $kw) {
         if (strpos($texto, $kw) !== false) { $tipo = $kw; break; }
     }
-    $modalidad = (strpos($texto, 'meet') !== false || strpos($texto, 'zoom') !== false || strpos($texto, 'teams') !== false)
-        ? 'telematica'
-        : 'presencial';
+    $modalidad = 'presencial';
+    if (strpos($texto, 'presencial') !== false) {
+        $modalidad = 'presencial';
+    } elseif (
+        strpos($texto, 'zoom') !== false ||
+        strpos($texto, 'telematico') !== false ||
+        strpos($texto, 'telematica') !== false
+    ) {
+        $modalidad = 'telematica';
+    }
     return [
         'id' => gcalAppId((string) $event['id']),
         'titulo' => $titulo,
