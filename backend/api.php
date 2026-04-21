@@ -413,6 +413,57 @@ function saveGoogleSyncToken(PDO $pdo, string $calendarId, string $syncToken): v
     ]]);
 }
 
+function hashAppId(string $raw): int {
+    $hex = substr(md5($raw), 0, 12);
+    return (int) base_convert($hex, 16, 10);
+}
+
+function enviarCorreoSimple(array $config, string $to, string $subject, string $message): bool {
+    $from = trim((string) ($config['mail_from'] ?? ''));
+    $fromName = trim((string) ($config['mail_from_name'] ?? 'Abogapp'));
+    if ($from === '') return false;
+    $headers = [];
+    $headers[] = 'MIME-Version: 1.0';
+    $headers[] = 'Content-type: text/plain; charset=UTF-8';
+    $headers[] = 'From: ' . $fromName . ' <' . $from . '>';
+    return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $message, implode("\r\n", $headers));
+}
+
+function obtenerMapaUsuarios(PDO $pdo): array {
+    $stmt = $pdo->query('SELECT email, nombre FROM abogapp_users WHERE active = 1');
+    $map = [];
+    foreach ($stmt->fetchAll() as $u) {
+        $email = trim((string) ($u['email'] ?? ''));
+        if ($email === '') continue;
+        $nombre = trim((string) ($u['nombre'] ?? ''));
+        if ($nombre !== '') $map[mb_strtolower($nombre, 'UTF-8')] = $email;
+        $map[mb_strtolower($email, 'UTF-8')] = $email;
+    }
+    return $map;
+}
+
+function resolverEmailsAsignados(PDO $pdo, array $asignados): array {
+    $map = obtenerMapaUsuarios($pdo);
+    $emails = [];
+    foreach ($asignados as $a) {
+        $k = mb_strtolower(trim((string) $a), 'UTF-8');
+        if ($k === '') continue;
+        if (isset($map[$k])) $emails[] = $map[$k];
+    }
+    return array_values(array_unique($emails));
+}
+
+function obtenerRecordsTabla(PDO $pdo, string $table): array {
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table');
+    $stmt->execute(['table' => $table]);
+    $out = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $data = json_decode($row['payload'] ?? 'null', true);
+        if (is_array($data)) $out[] = $data;
+    }
+    return $out;
+}
+
 switch ($action) {
     case 'pull_table': {
         $table = $_GET['table'] ?? '';
@@ -591,6 +642,70 @@ switch ($action) {
                 'status' => (string) ($result['status'] ?? ''),
             ],
         ]);
+        break;
+    }
+
+    case 'send_task_assignment_email': {
+        $task = $payload['task'] ?? null;
+        if (!is_array($task)) apiFail('Payload task inválido.', 422);
+        $taskId = (string) ($task['id'] ?? '');
+        $titulo = trim((string) ($task['titulo'] ?? $task['texto'] ?? 'Tarea'));
+        $vence = trim((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
+        $tipo = trim((string) ($task['tipo'] ?? 'tarea'));
+        $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
+        if (!is_array($asignados)) $asignados = [$asignados];
+        $emails = resolverEmailsAsignados($pdo, $asignados);
+        $sent = 0;
+        foreach ($emails as $email) {
+            $subject = "Nueva tarea asignada: {$titulo}";
+            $body = "Se te asignó una {$tipo} en Abogapp.\n\nTítulo: {$titulo}\nVencimiento: " . ($vence ?: 'Sin fecha') . "\nID: {$taskId}\n\nIngresa a la app para ver el detalle.";
+            if (enviarCorreoSimple($config, $email, $subject, $body)) {
+                $sent++;
+            }
+        }
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'recipients' => count($emails)]]);
+        break;
+    }
+
+    case 'send_task_due_reminders': {
+        $today = date('Y-m-d');
+        $tablas = [
+            ['table' => 'diario', 'tipo' => 'tarea diaria', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
+            ['table' => 'tareasinternas', 'tipo' => 'tarea interna', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
+            ['table' => 'tareas', 'tipo' => 'gestión', 'titulo' => 'titulo', 'vence' => 'fin', 'asignados' => 'asignadoA'],
+        ];
+        $sent = 0;
+        foreach ($tablas as $cfgTabla) {
+            $rows = obtenerRecordsTabla($pdo, $cfgTabla['table']);
+            foreach ($rows as $row) {
+                $vence = trim((string) ($row[$cfgTabla['vence']] ?? ''));
+                if ($vence === '' || $vence < $today) continue;
+                $asignados = $row[$cfgTabla['asignados']] ?? [];
+                if (!is_array($asignados)) $asignados = [$asignados];
+                $emails = resolverEmailsAsignados($pdo, $asignados);
+                $titulo = trim((string) ($row[$cfgTabla['titulo']] ?? 'Tarea'));
+                $taskId = (string) ($row['id'] ?? '');
+                foreach ($emails as $email) {
+                    $reminderId = hashAppId("mail-reminder|{$cfgTabla['table']}|{$taskId}|{$email}|{$today}");
+                    $exists = $pdo->prepare('SELECT 1 FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+                    $exists->execute(['table' => 'email_task_reminders', 'id' => $reminderId]);
+                    if ($exists->fetchColumn()) continue;
+                    $subject = "Recordatorio diario: {$titulo}";
+                    $body = "Recordatorio de {$cfgTabla['tipo']} asignada.\n\nTítulo: {$titulo}\nVence: {$vence}\nID: {$taskId}\n\nEste aviso se enviará diariamente hasta la fecha de vencimiento.";
+                    if (enviarCorreoSimple($config, $email, $subject, $body)) {
+                        $sent++;
+                    }
+                    upsertRecords($pdo, 'email_task_reminders', [[
+                        'id' => $reminderId,
+                        'tabla' => $cfgTabla['table'],
+                        'taskId' => $taskId,
+                        'email' => $email,
+                        'date' => $today,
+                    ]]);
+                }
+            }
+        }
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'date' => $today]]);
         break;
     }
 

@@ -10,4 +10,6 @@ return [
     'google_service_account_json_path' => __DIR__ . '/service-account.json',
     'google_keywords' => ['preparatoria', 'monitorio', 'alegato', 'juicio', 'audiencia', 'comparendo', 'cautelar'],
     'google_sync_days_back' => 90,
+    'mail_from' => 'no-reply@tu-dominio.cl',
+    'mail_from_name' => 'Abogapp',
 ];

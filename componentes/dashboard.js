@@ -534,6 +534,9 @@ document.addEventListener("DOMContentLoaded", () => {
               `Tarea diaria creada por ${usuario.nombre}`,
               "dashboard"
             );
+            if (window.notificarAsignacionEmail) {
+              window.notificarAsignacionEmail({ ...nueva, tipo: "tarea diaria" });
+            }
           } else if (window.supabaseSync) {
             mostrarNotificacion(
               "Los datos no se pudieron sincronizar. Intente nuevamente",

@@ -1489,6 +1489,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  window.notificarAsignacionEmail = async (task) => {
+    if (!window.supabaseSync?.sendTaskAssignmentEmail) return;
+    try {
+      await window.supabaseSync.sendTaskAssignmentEmail(task);
+    } catch (error) {
+      console.warn("No se pudo enviar correo de asignación:", error);
+    }
+  };
+
+  async function ejecutarRecordatorioEmailDiario() {
+    if (!window.supabaseSync?.sendTaskDueReminders) return;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const llave = `mail_reminder_last_run_${hoy}`;
+    if (localStorage.getItem(llave) === "1") return;
+    try {
+      await window.supabaseSync.sendTaskDueReminders();
+      localStorage.setItem(llave, "1");
+    } catch (error) {
+      console.warn("No se pudo ejecutar recordatorio diario por correo:", error);
+    }
+  }
+
   async function sincronizarGoogleCalendarManual(boton = null) {
     if (!window.supabaseSync?.syncGoogleCalendarAudiencias) {
       mostrarNotificacion("Sincronización Google Calendar no disponible", "#D7263D");
@@ -1583,6 +1605,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         actualizarDashboard();
       }
       iniciarAutoSyncGoogleCalendar();
+      ejecutarRecordatorioEmailDiario();
     }
 
     let usuarioActual = null;
