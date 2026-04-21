@@ -446,11 +446,29 @@ function resolverEmailsAsignados(PDO $pdo, array $asignados): array {
     $map = obtenerMapaUsuarios($pdo);
     $emails = [];
     foreach ($asignados as $a) {
-        $k = mb_strtolower(trim((string) $a), 'UTF-8');
-        if ($k === '') continue;
-        if (isset($map[$k])) $emails[] = $map[$k];
+        $raw = trim((string) $a);
+        if ($raw === '') continue;
+        $tokens = preg_split('/[,;]+/', $raw) ?: [];
+        if (!$tokens) $tokens = [$raw];
+        foreach ($tokens as $token) {
+            $k = mb_strtolower(trim((string) $token), 'UTF-8');
+            if ($k === '') continue;
+            if (isset($map[$k])) $emails[] = $map[$k];
+        }
     }
     return array_values(array_unique($emails));
+}
+
+function normalizarFechaYmd(string $value): ?string {
+    $value = trim($value);
+    if ($value === '') return null;
+    try {
+        $dt = new DateTime($value);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return $value;
+        return null;
+    }
 }
 
 function obtenerRecordsTabla(PDO $pdo, string $table): array {
@@ -652,7 +670,7 @@ switch ($action) {
         $titulo = trim((string) ($task['titulo'] ?? $task['texto'] ?? 'Tarea'));
         $vence = trim((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
         $tipo = trim((string) ($task['tipo'] ?? 'tarea'));
-        $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
+        $asignados = $task['assignedNow'] ?? ($task['asignadosA'] ?? ($task['asignadoA'] ?? []));
         if (!is_array($asignados)) $asignados = [$asignados];
         $emails = resolverEmailsAsignados($pdo, $asignados);
         $sent = 0;
@@ -678,8 +696,9 @@ switch ($action) {
         foreach ($tablas as $cfgTabla) {
             $rows = obtenerRecordsTabla($pdo, $cfgTabla['table']);
             foreach ($rows as $row) {
-                $vence = trim((string) ($row[$cfgTabla['vence']] ?? ''));
-                if ($vence === '' || $vence < $today) continue;
+                $venceRaw = trim((string) ($row[$cfgTabla['vence']] ?? ''));
+                $vence = normalizarFechaYmd($venceRaw);
+                if (!$vence || $vence < $today) continue;
                 $asignados = $row[$cfgTabla['asignados']] ?? [];
                 if (!is_array($asignados)) $asignados = [$asignados];
                 $emails = resolverEmailsAsignados($pdo, $asignados);

@@ -507,6 +507,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const idEdit = parseInt(modal.dataset.editing,10);
           const t = tareas.find(x => x.id === idEdit);
           if (t) {
+            const asignadosPrevios = Array.isArray(t.asignadosA) ? [...t.asignadosA] : [];
             t.texto = texto;
             t.asignadosA = asignadosA;
             t.clienteId = clienteId;
@@ -516,6 +517,10 @@ document.addEventListener("DOMContentLoaded", () => {
             localStorage.setItem("tareasDia",JSON.stringify(tareas));
             if (window.supabaseSync) {
               await supabaseSync.pushRegistro("diario", t);
+            }
+            const nuevosAsignados = asignadosA.filter((nombre) => !asignadosPrevios.includes(nombre));
+            if (nuevosAsignados.length && window.notificarAsignacionEmail) {
+              window.notificarAsignacionEmail({ ...t, tipo: "tarea diaria", assignedNow: nuevosAsignados });
             }
             mostrarNotificacion("Tarea actualizada", "#00E500");
           }
