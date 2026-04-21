@@ -318,6 +318,18 @@ function gcalEventToAudiencia(array $event): array {
     ];
 }
 
+function gcalEventStartDateYmd(array $event): ?string {
+    $start = $event['start'] ?? [];
+    $startRaw = (string) ($start['dateTime'] ?? $start['date'] ?? '');
+    if ($startRaw === '') return null;
+    try {
+        $dt = new DateTime($startRaw);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function getGoogleSyncToken(PDO $pdo, string $calendarId): ?string {
     $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
     $stmt->execute(['table' => 'google_calendar_meta', 'id' => gcalAppId('meta:' . $calendarId)]);
@@ -393,16 +405,16 @@ switch ($action) {
         if (!is_array($keywords) || !$keywords) {
             $keywords = ['preparatoria', 'monitorio', 'alegato', 'juicio'];
         }
-        $syncDaysBack = max(1, (int) ($config['google_sync_days_back'] ?? 90));
         $token = googleServiceAccountToken($config);
         $syncToken = getGoogleSyncToken($pdo, $calendarId);
+        $todayYmd = date('Y-m-d');
 
         $items = [];
         $nextSyncToken = null;
         $pageToken = null;
         $modeIncremental = (bool) $syncToken;
 
-        $fetchLoop = function (?string $syncTok) use (&$items, &$nextSyncToken, &$pageToken, $token, $calendarId, $syncDaysBack) {
+        $fetchLoop = function (?string $syncTok) use (&$items, &$nextSyncToken, &$pageToken, $token, $calendarId) {
             $items = [];
             $nextSyncToken = null;
             $pageToken = null;
@@ -417,7 +429,7 @@ switch ($action) {
                     $params['syncToken'] = $syncTok;
                 } else {
                     $params['orderBy'] = 'startTime';
-                    $params['timeMin'] = (new DateTime("-{$syncDaysBack} days"))->format(DateTime::ATOM);
+                    $params['timeMin'] = (new DateTime('now'))->format(DateTime::ATOM);
                 }
                 $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events?' . http_build_query($params);
                 $resp = googleApiGet($url, $token);
@@ -449,6 +461,10 @@ switch ($action) {
                 $stmt = $pdo->prepare('DELETE FROM abogapp_records WHERE table_name = :table AND app_id = :id');
                 $stmt->execute(['table' => 'audiencias', 'id' => gcalAppId($eventId)]);
                 $deleted += (int) $stmt->rowCount();
+                continue;
+            }
+            $eventDate = gcalEventStartDateYmd($ev);
+            if ($eventDate && $eventDate < $todayYmd) {
                 continue;
             }
             if (!gcalMatchesKeywords($ev, $keywords)) continue;
