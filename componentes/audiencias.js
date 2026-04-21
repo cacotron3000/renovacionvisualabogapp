@@ -175,7 +175,7 @@ if (cerrarModalAudienciasProximas && modalAudienciasProximas) {
 }
 
 if (audienciaForm) {
-  audienciaForm.addEventListener("submit", (e) => {
+  audienciaForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const tipoSelect = document.getElementById("audienciaTipo");
     const modalidadSelect = document.getElementById("audienciaModalidad");
@@ -198,7 +198,43 @@ if (audienciaForm) {
       audiencias.push(datos);
     }
     guardarAudiencias(audiencias);
-    if (window.supabaseSync) supabaseSync.pushRegistro("audiencias", datos);
+    if (window.supabaseSync) await supabaseSync.pushRegistro("audiencias", datos);
+    if (window.supabaseSync?.syncAudienciaToGoogle) {
+      try {
+        const googleData = await window.supabaseSync.syncAudienciaToGoogle(datos);
+        if (googleData?.googleEventId) {
+          const listaLocal = obtenerAudiencias();
+          const idxLocal = listaLocal.findIndex((x) => x.id === datos.id);
+          if (idxLocal !== -1) {
+            const appIdGoogle = Number(googleData.appId || 0);
+            const registroGoogle = {
+              ...listaLocal[idxLocal],
+              id: appIdGoogle > 0 ? appIdGoogle : listaLocal[idxLocal].id,
+              googleEventId: googleData.googleEventId,
+              googleHtmlLink: googleData.googleHtmlLink || "",
+              fuente: "google_calendar_sync",
+            };
+            const idAnterior = listaLocal[idxLocal].id;
+            listaLocal.splice(idxLocal, 1);
+            const idxExistente = listaLocal.findIndex((x) => x.id === registroGoogle.id);
+            if (idxExistente !== -1) {
+              listaLocal[idxExistente] = registroGoogle;
+            } else {
+              listaLocal.push(registroGoogle);
+            }
+            guardarAudiencias(listaLocal);
+            if (window.supabaseSync) {
+              if (registroGoogle.id !== idAnterior) {
+                await supabaseSync.deleteRegistro("audiencias", idAnterior);
+              }
+              await supabaseSync.pushRegistro("audiencias", registroGoogle);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("No se pudo sincronizar audiencia hacia Google Calendar:", err);
+      }
+    }
     audienciaForm.reset();
     const urgenciaSelect = document.getElementById("audienciaUrgencia");
     if (typeof setSelectValue === "function") {
@@ -248,26 +284,24 @@ function terminarAudiencia(id) {
     const archivadas = obtenerAudienciasArchivadas();
     archivadas.push(fin);
     guardarAudienciasArchivadas(archivadas);
-    if (window.supabaseSync) {
-      supabaseSync.deleteRegistro("audiencias", id);
-      supabaseSync.pushRegistro("audienciasarchivadas", fin);
-    }
-    cargarAudiencias();
-    cargarAudienciasArchivadas();
-    mostrarAudienciasProximas();
-  }
+	    if (window.supabaseSync) {
+	      supabaseSync.deleteRegistro("audiencias", id);
+	      supabaseSync.pushRegistro("audienciasarchivadas", fin);
+	    }
+	    cargarAudiencias();
+	    cargarAudienciasArchivadas();
+	  }
 
   function eliminarAudiencia(id, archivada = false) {
     if (archivada) {
       const archivadas = obtenerAudienciasArchivadas().filter(a => a.id !== id);
       guardarAudienciasArchivadas(archivadas);
       cargarAudienciasArchivadas();
-    } else {
-      const audiencias = obtenerAudiencias().filter(a => a.id !== id);
-      guardarAudiencias(audiencias);
-      cargarAudiencias();
-      mostrarAudienciasProximas();
-    }
+	    } else {
+	      const audiencias = obtenerAudiencias().filter(a => a.id !== id);
+	      guardarAudiencias(audiencias);
+	      cargarAudiencias();
+	    }
     if (window.supabaseSync) {
       supabaseSync.deleteRegistro(archivada ? "audienciasarchivadas" : "audiencias", id);
     }

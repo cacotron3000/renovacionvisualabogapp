@@ -234,6 +234,35 @@
       });
       return Number(data?.numero || 0);
     },
+    async syncGoogleCalendarAudiencias() {
+      const { data } = await apiRequest("sync_google_calendar_audiencias", {
+        method: "POST",
+        body: {},
+      });
+      await pullTabla("audiencias");
+      return data || {};
+    },
+    async syncAudienciaToGoogle(audiencia) {
+      const { data } = await apiRequest("upsert_google_event_from_audiencia", {
+        method: "POST",
+        body: { audiencia },
+      });
+      return data || {};
+    },
+    async sendTaskAssignmentEmail(task) {
+      const { data } = await apiRequest("send_task_assignment_email", {
+        method: "POST",
+        body: { task },
+      });
+      return data || {};
+    },
+    async sendTaskDueReminders() {
+      const { data } = await apiRequest("send_task_due_reminders", {
+        method: "POST",
+        body: {},
+      });
+      return data || {};
+    },
   };
 
   async function fetchUsersList() {

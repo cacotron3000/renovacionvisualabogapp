@@ -6,4 +6,13 @@ return [
     'db_pass' => 'REEMPLAZAR_PASSWORD',
     'api_key' => 'REEMPLAZAR_API_KEY',
     'timezone' => 'America/Santiago',
+    'google_calendar_id' => 'REEMPLAZAR_CALENDAR_ID',
+    'google_service_account_json_path' => __DIR__ . '/service-account.json',
+    'google_keywords' => ['preparatoria', 'monitorio', 'alegato', 'juicio', 'audiencia', 'comparendo', 'cautelar'],
+    'google_sync_days_back' => 90,
+    'mail_from' => 'no-reply@tu-dominio.cl',
+    'mail_from_name' => 'Abogapp',
+    'task_reminders_hour' => 9,
+    'task_reminders_minute' => 0,
+    'task_reminders_cron_secret' => 'REEMPLAZAR_SECRET_CRON',
 ];
