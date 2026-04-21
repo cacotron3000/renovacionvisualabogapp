@@ -1743,6 +1743,66 @@ document.addEventListener("DOMContentLoaded", async () => {
       return ok;
     }
 
+    function normalizarTexto(v) {
+      return String(v || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function claveDedupePorNombre(key, item) {
+      if (!item || typeof item !== "object") return "";
+      if (key === "clientes") return `nombre:${normalizarTexto(item.nombre)}`;
+      if (key === "audiencias" || key === "audienciasArchivadas") {
+        return `titulo:${normalizarTexto(item.titulo)}`;
+      }
+      if (
+        key === "tareas" ||
+        key === "tareasArchivadas" ||
+        key === "tareasDia" ||
+        key === "tareasDiaArchivadas" ||
+        key === "tareasInternas"
+      ) {
+        return `tarea:${normalizarTexto(item.titulo || item.texto)}`;
+      }
+      return "";
+    }
+
+    function fusionarColeccion(key, actuales, importados) {
+      const base = Array.isArray(actuales) ? actuales.slice() : [];
+      const mapa = new Map();
+      base.forEach((row, idx) => {
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":")) {
+          mapa.set(claveNombre, idx);
+          return;
+        }
+        if (row && typeof row === "object" && row.id !== undefined && row.id !== null) {
+          mapa.set(`id:${row.id}`, idx);
+        }
+      });
+
+      (Array.isArray(importados) ? importados : []).forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":") && mapa.has(claveNombre)) {
+          base[mapa.get(claveNombre)] = row;
+          return;
+        }
+        const claveId =
+          row.id !== undefined && row.id !== null ? `id:${row.id}` : "";
+        if (claveId && mapa.has(claveId)) {
+          base[mapa.get(claveId)] = row;
+          return;
+        }
+        const pos = base.push(row) - 1;
+        if (claveNombre && !claveNombre.endsWith(":")) mapa.set(claveNombre, pos);
+        else if (claveId) mapa.set(claveId, pos);
+      });
+      return base;
+    }
+
     btnConfig.addEventListener("click", () => {
       document.getElementById("configRadio").value = configuracion.radius;
       document.getElementById("configTema").value = configuracion.tema;
@@ -1823,13 +1883,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             mostrarNotificacion("JSON inválido para importación", "#D7263D");
             return;
           }
-          if (!confirm("Esto reemplazará la base local de trabajo y la sincronizará con cPanel. ¿Deseas continuar?")) {
+          if (!confirm("Esto combinará el JSON con la base local (solo reemplaza si cliente/audiencia/tarea tienen el mismo nombre) y luego sincronizará con cPanel. ¿Deseas continuar?")) {
             return;
           }
           tablasSync.forEach(({ key }) => {
             const value = payload[key];
             if (Array.isArray(value)) {
-              localStorage.setItem(key, JSON.stringify(value));
+              const actuales = JSON.parse(localStorage.getItem(key) || "[]");
+              const fusionados = fusionarColeccion(key, actuales, value);
+              localStorage.setItem(key, JSON.stringify(fusionados));
             }
           });
           const sincronizado = await sincronizarImportacionConCpanel();
