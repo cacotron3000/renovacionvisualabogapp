@@ -1124,6 +1124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
   const hoyResponsableFiltro = document.getElementById("hoyResponsableFiltro");
   const hoyExportSemanal = document.getElementById("hoyExportSemanal");
+  const syncAudienciasGoogleBtn = document.getElementById("syncAudienciasGoogleBtn");
   const sidebar = document.querySelector(".sidebar");
   const toggleSidebarBtn = document.getElementById("toggleSidebar");
   const quickActionFab = document.getElementById("quickActionFab");
@@ -1488,10 +1489,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  async function sincronizarGoogleCalendarManual(boton = null) {
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) {
+      mostrarNotificacion("Sincronización Google Calendar no disponible", "#D7263D");
+      return null;
+    }
+    if (autoSyncGoogleEnCurso) {
+      mostrarNotificacion("Sincronización en curso, intenta nuevamente en unos segundos", "#FF9800");
+      return null;
+    }
+    const labelOriginal = boton ? boton.innerHTML : "";
+    if (boton) {
+      boton.disabled = true;
+      boton.innerHTML = "<i class='fa-sharp fa-solid fa-spinner fa-spin'></i> Sincronizando...";
+    }
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      if (typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+      mostrarNotificacion(
+        `Google Calendar sincronizado: ${resp?.audiencias_upserted || 0} audiencias cargadas.`,
+        "#00A36C"
+      );
+      return resp;
+    } catch (error) {
+      console.error("Error sincronizando Google Calendar:", error);
+      mostrarNotificacion("No se pudo sincronizar Google Calendar", "#D7263D");
+      return null;
+    } finally {
+      autoSyncGoogleEnCurso = false;
+      if (boton) {
+        boton.disabled = false;
+        boton.innerHTML = labelOriginal;
+      }
+    }
+  }
+
   function iniciarAutoSyncGoogleCalendar() {
     if (autoSyncGoogleInterval || !window.supabaseSync?.syncGoogleCalendarAudiencias) return;
     ejecutarAutoSyncGoogleCalendar();
     autoSyncGoogleInterval = setInterval(ejecutarAutoSyncGoogleCalendar, 60 * 1000);
+  }
+
+  if (syncAudienciasGoogleBtn) {
+    syncAudienciasGoogleBtn.addEventListener("click", () => sincronizarGoogleCalendarManual(syncAudienciasGoogleBtn));
   }
 
   aplicarConfiguracion();
@@ -2003,29 +2046,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (sincronizarGoogleCalendarBtn) {
       sincronizarGoogleCalendarBtn.addEventListener("click", async () => {
-        if (!window.supabaseSync?.syncGoogleCalendarAudiencias) {
-          mostrarNotificacion("Sincronización Google Calendar no disponible", "#D7263D");
-          return;
-        }
-        sincronizarGoogleCalendarBtn.disabled = true;
-        const labelOriginal = sincronizarGoogleCalendarBtn.innerHTML;
-        sincronizarGoogleCalendarBtn.innerHTML = "<i class='fa-sharp fa-solid fa-spinner fa-spin'></i> Sincronizando...";
-        try {
-          const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
-          if (typeof window.refrescarDatos === "function") {
-            window.refrescarDatos(["audiencias", "dashboard"]);
-          }
-          mostrarNotificacion(
-            `Google Calendar sincronizado: ${resp?.audiencias_upserted || 0} audiencias cargadas.`,
-            "#00A36C"
-          );
-        } catch (error) {
-          console.error("Error sincronizando Google Calendar:", error);
-          mostrarNotificacion("No se pudo sincronizar Google Calendar", "#D7263D");
-        } finally {
-          sincronizarGoogleCalendarBtn.disabled = false;
-          sincronizarGoogleCalendarBtn.innerHTML = labelOriginal;
-        }
+        await sincronizarGoogleCalendarManual(sincronizarGoogleCalendarBtn);
       });
     }
   }
