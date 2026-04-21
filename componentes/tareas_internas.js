@@ -385,7 +385,6 @@ document.addEventListener("DOMContentLoaded", () => {
           const idEdit = parseInt(modal.dataset.editing, 10);
           const t = tareas.find(x => x.id === idEdit);
           if (t) {
-            const asignadosPrevios = Array.isArray(t.asignadosA) ? [...t.asignadosA] : [];
             t.texto = texto;
             t.asignadosA = asignadosA;
             t.clienteId = clienteId;
@@ -395,10 +394,6 @@ document.addEventListener("DOMContentLoaded", () => {
             localStorage.setItem("tareasInternas", JSON.stringify(tareas));
             if (window.supabaseSync) {
               await supabaseSync.pushRegistro("tareasinternas", t);
-            }
-            const nuevosAsignados = asignadosA.filter((nombre) => !asignadosPrevios.includes(nombre));
-            if (nuevosAsignados.length && window.notificarAsignacionEmail) {
-              window.notificarAsignacionEmail({ ...t, tipo: "tarea interna", assignedNow: nuevosAsignados });
             }
           }
         } else {
