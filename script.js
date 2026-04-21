@@ -1439,12 +1439,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tag = (e.target?.tagName || "").toLowerCase();
     const editando = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
     if (editando) return;
-    if (e.shiftKey && (e.key === "/" || e.key === "?")) {
+    if ((e.shiftKey && e.key.toLowerCase() === "f") || (e.shiftKey && e.key === "?")) {
       e.preventDefault();
       busquedaGlobalInput?.focus();
       return;
     }
-    if (e.shiftKey && e.key.toLowerCase() === "k") {
+    if (e.shiftKey && e.code === "Space") {
       e.preventDefault();
       abrirCommandPalette();
       return;
@@ -1452,7 +1452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Escape") {
       cerrarCommandPalette();
     }
-    if (e.shiftKey && e.key.toLowerCase() === "g") {
+    if (e.shiftKey && e.key.toLowerCase() === "d") {
       localStorage.setItem("ultimaVista", "dashboard");
       cambiarVista("dashboard");
       return;
