@@ -697,7 +697,7 @@ function mostrarDetalleEntidad(tipo, data) {
        <h4>Próxima acción</h4><p>${data.proximaAccion || "-"}</p>
        <h4>Acciones rápidas</h4>
        <div class="quick-panel-actions">
-         <button class="mini-boton" onclick="cambiarVista('hoy')">Ir a hoy</button>
+         <button class="mini-boton" onclick="cambiarVista('dashboard')">Ir a dashboard</button>
          <button class="quickpanel-edit-btn" onclick="if (typeof editarTarea==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarTarea(${data.id}); mostrarModal(document.getElementById('ModalFormularioTarea'));}">✏️ Editar</button>
        </div>`
     );
@@ -740,6 +740,47 @@ function mostrarDetalleEntidad(tipo, data) {
     return;
   }
   if (tipoNorm === "cliente") {
+    const expedientes = JSON.parse(localStorage.getItem("expedientes") || "[]");
+    const expedienteIds = new Set(
+      expedientes
+        .filter((e) => e.clienteId === data.id)
+        .map((e) => e.id)
+    );
+    const tareasGestionArchivadas = JSON.parse(localStorage.getItem("tareasArchivadas") || "[]");
+    const tareasDiaArchivadas = JSON.parse(localStorage.getItem("tareasDiaArchivadas") || "[]");
+    const audienciasArchivadas = JSON.parse(localStorage.getItem("audienciasArchivadas") || "[]");
+    const historialTareas = tareasGestionArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.titulo || t.texto || "Sin título",
+        fecha: t.archivadoEn || t.fin || t.fechaFin || t.created_at || "",
+      }));
+    const historialTareasDia = tareasDiaArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.texto || "Tarea del día",
+        fecha: t.archivadoEn || t.fechaFin || t.creadoEn || "",
+      }));
+    const historialAudiencias = audienciasArchivadas
+      .filter((a) => a.clienteId === data.id || expedienteIds.has(a.expedienteId))
+      .map((a) => ({
+        tipo: "Audiencia",
+        titulo: a.titulo || "Sin título",
+        fecha: a.archivadoEn || a.fecha || "",
+      }));
+    const historial = [...historialTareas, ...historialTareasDia, ...historialAudiencias]
+      .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+      .slice(0, 12);
+    const historialHtml = historial.length
+      ? `<ul class="historial-lista">${historial
+          .map(
+            (h) =>
+              `<li><span class="historial-tipo">${h.tipo}</span><span>${h.titulo}</span><small>${h.fecha ? formatearCorta(h.fecha) : "-"}</small></li>`
+          )
+          .join("")}</ul>`
+      : `<p>Sin tareas/audiencias finalizadas asociadas.</p>`;
     abrirQuickPanel(
       `Cliente: ${data.nombre || "Sin nombre"}`,
       `<h4>Resumen</h4><p><strong>Correo:</strong> ${data.correo || "-"}</p>
@@ -747,6 +788,8 @@ function mostrarDetalleEntidad(tipo, data) {
        <p><strong>Dirección:</strong> ${data.direccion || "-"}</p>
        <p><strong>RUT:</strong> ${data.rut || "-"}</p>
        <p><strong>Notas:</strong> ${data.confidencial || "-"}</p>
+       <h4>Historial reciente</h4>
+       ${historialHtml}
        <button class="quickpanel-edit-btn" onclick="if (typeof editarCliente==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarCliente(${data.id}); mostrarModal(document.getElementById('modalFormulario'));}">✏️ Editar</button>`
     );
     return;
@@ -1396,12 +1439,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tag = (e.target?.tagName || "").toLowerCase();
     const editando = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
     if (editando) return;
-    if (e.key === "/") {
+    if (e.shiftKey && (e.key === "/" || e.key === "?")) {
       e.preventDefault();
       busquedaGlobalInput?.focus();
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    if (e.shiftKey && e.key.toLowerCase() === "k") {
       e.preventDefault();
       abrirCommandPalette();
       return;
@@ -1409,15 +1452,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Escape") {
       cerrarCommandPalette();
     }
-    if (e.key.toLowerCase() === "g") {
+    if (e.shiftKey && e.key.toLowerCase() === "g") {
       localStorage.setItem("ultimaVista", "dashboard");
       cambiarVista("dashboard");
       return;
     }
-    if (e.key.toLowerCase() === "n") {
+    if (e.shiftKey && e.key.toLowerCase() === "n") {
       document.getElementById("nuevaTareaDiaBtnDashboard")?.click();
     }
-    if (e.key.toLowerCase() === "c") {
+    if (e.shiftKey && e.key.toLowerCase() === "c") {
       document.getElementById("abrirFormulario")?.click();
     }
   });

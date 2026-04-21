@@ -2075,14 +2075,21 @@ body.dark-mode .generador-card {
 
 .workspace-hero {
   margin-bottom: 16px;
-  background: linear-gradient(120deg, rgba(76,139,110,.15), rgba(127,156,138,.12));
+  background: var(--surface-1);
   padding: 16px 20px;
   border-radius: 16px;
   border: 1px solid var(--border-soft);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
 }
 
 .workspace-hero p {
-  color: #3f4d47;
+  color: var(--color-gris);
+}
+
+body.dark-mode .workspace-hero {
+  background: linear-gradient(180deg, rgba(30,41,59,.9), rgba(15,23,42,.9));
+  border-color: rgba(148,163,184,.25);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.35);
 }
 
 .kpi-strip {
@@ -2197,6 +2204,34 @@ body.dark-mode .generador-card {
 
 #commandPaletteResults button:hover {
   background: #edf6f1;
+}
+
+.historial-lista {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.historial-lista li {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: rgba(255,255,255,.65);
+}
+
+.historial-tipo {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--color-principal);
+  text-transform: uppercase;
+}
+
+body.dark-mode .historial-lista li {
+  background: rgba(15,23,42,.82);
 }
 
 .mobile-bottom-nav {
