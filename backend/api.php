@@ -586,6 +586,7 @@ switch ($action) {
             'ok' => true,
             'data' => [
                 'googleEventId' => (string) ($result['id'] ?? ''),
+                'appId' => gcalAppId((string) ($result['id'] ?? '')),
                 'googleHtmlLink' => (string) ($result['htmlLink'] ?? ''),
                 'status' => (string) ($result['status'] ?? ''),
             ],

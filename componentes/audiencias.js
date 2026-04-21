@@ -206,12 +206,28 @@ if (audienciaForm) {
           const listaLocal = obtenerAudiencias();
           const idxLocal = listaLocal.findIndex((x) => x.id === datos.id);
           if (idxLocal !== -1) {
-            listaLocal[idxLocal].googleEventId = googleData.googleEventId;
-            listaLocal[idxLocal].googleHtmlLink = googleData.googleHtmlLink || "";
-            listaLocal[idxLocal].fuente = "google_calendar_sync";
+            const appIdGoogle = Number(googleData.appId || 0);
+            const registroGoogle = {
+              ...listaLocal[idxLocal],
+              id: appIdGoogle > 0 ? appIdGoogle : listaLocal[idxLocal].id,
+              googleEventId: googleData.googleEventId,
+              googleHtmlLink: googleData.googleHtmlLink || "",
+              fuente: "google_calendar_sync",
+            };
+            const idAnterior = listaLocal[idxLocal].id;
+            listaLocal.splice(idxLocal, 1);
+            const idxExistente = listaLocal.findIndex((x) => x.id === registroGoogle.id);
+            if (idxExistente !== -1) {
+              listaLocal[idxExistente] = registroGoogle;
+            } else {
+              listaLocal.push(registroGoogle);
+            }
             guardarAudiencias(listaLocal);
             if (window.supabaseSync) {
-              await supabaseSync.pushRegistro("audiencias", listaLocal[idxLocal]);
+              if (registroGoogle.id !== idAnterior) {
+                await supabaseSync.deleteRegistro("audiencias", idAnterior);
+              }
+              await supabaseSync.pushRegistro("audiencias", registroGoogle);
             }
           }
         }
