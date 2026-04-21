@@ -83,15 +83,17 @@
   <div id="app" class="oculto">
     <!-- MENÚ: Navegación principal -->
     <nav class="sidebar">
+      <div class="sidebar-group-label">Workspace</div>
       <button id="toggleSidebar" class="sidebar-toggle"><i class="fa-sharp fa-solid fa-bars"></i></button>
       <!-- Cada botón representa una vista distinta. Se usarán para mostrar/ocultar secciones -->
-      <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Dashboard</span></button>
-      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Hoy</span></button>
-      <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
-      <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span> Tareas</span><span id="tareasDiaCantidad">0</span></button>
-      <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span> Tareas internas</span></button>
-      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span> Clientes</span></button>
-      <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span> Generador</span></button>
+      <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Command Center</span></button>
+      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Inbox operativa</span></button>
+      <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Casos y audiencias</span><span id="audienciasCantidad">0</span></button>
+      <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
+      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes (CRM)</span></button>
+      <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
+      <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
+      <div class="sidebar-group-label">Administración</div>
       <button id="tabUsuarios" data-tab="usuarios" class="tab oculto"><i class="fa-sharp fa-solid fa-users"></i><span> Usuarios</span></button>
       <button id="toggleTema" class="tab"><i class="fa-sharp fa-solid fa-moon"></i><span> Oscuro</span></button>
       <button id="abrirConfiguracion" class="tab"><i class="fa-sharp fa-solid fa-gear"></i><span> Configuración</span></button>
@@ -102,6 +104,16 @@
     <main class="contenido">
       <!-- ========== SECCION 1: Dashboard ==========-->
       <section id="vista-dashboard" class="vista">
+  <div class="workspace-hero">
+    <h1>Matter-first Workspace</h1>
+    <p>Prioriza riesgos, próximos hitos y trabajo crítico del equipo.</p>
+  </div>
+  <div class="kpi-strip">
+    <article class="kpi-item"><span>Vencimientos hoy</span><strong id="kpiVencimientosHoy">0</strong></article>
+    <article class="kpi-item"><span>Riesgo alto</span><strong id="kpiRiesgoAlto">0</strong></article>
+    <article class="kpi-item"><span>Carga del equipo</span><strong id="kpiCargaEquipo">0%</strong></article>
+    <article class="kpi-item"><span>Casos activos</span><strong id="kpiCasosActivos">0</strong></article>
+  </div>
   <div class="dashboard-row">
     <div class="dashboard-card ancho-2-4">
       <h2><i class="fa-sharp fa-solid fa-users"></i> Miembros del equipo</h2>
@@ -143,7 +155,7 @@
       <!-- SECCION HOY -->
       <section id="vista-hoy" class="vista oculto">
         <div class="dashboard-card">
-          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Bandeja de hoy</h2>
+          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Work Queue</h2>
           <div id="hoyFiltros" class="hoy-filtros">
             <button class="mini-boton" data-hoy-filtro="todos">Todos</button>
             <button class="mini-boton" data-hoy-filtro="hoy">Hoy</button>
@@ -191,7 +203,7 @@
       <!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === -->
 <section id="vista-clientes" class="vista oculto">
   <div class="section-header">
-    <h1><i class="fa-sharp fa-solid fa-user"></i> Clientes <span id="clientesTotal"></span></h1>
+    <h1><i class="fa-sharp fa-solid fa-user"></i> Clientes (CRM legal) <span id="clientesTotal"></span></h1>
     <button id="abrirFormulario" class="boton">+ Nuevo Cliente</button>
   </div>
   <input type="text" id="buscarClientes" placeholder="Buscar clientes..." />
@@ -208,9 +220,10 @@
       <!-- SECCION GENERADOR -->
       <section id="vista-generador" class="vista oculto">
         <div class="section-header">
-          <h1><i class="fa-sharp fa-solid fa-file-signature"></i> Generador de escritos</h1>
+          <h1><i class="fa-sharp fa-solid fa-file-signature"></i> Documentos y automatizaciones</h1>
         </div>
         <div class="dashboard-card generador-card">
+          <p class="generador-helper">Flujo recomendado: Selecciona plantilla → completa datos → revisa versión final → genera documento.</p>
           <div class="generador-native-wrap">
             <div id="generadorMount" class="generador-native-mount"></div>
           </div>
@@ -255,6 +268,26 @@
 
 
     </main>
+  </div>
+  <button id="quickActionFab" class="quick-action-fab" title="Acciones rápidas"><i class="fa-sharp fa-solid fa-plus"></i></button>
+  <div id="quickActionMenu" class="quick-action-menu oculto">
+    <button id="qaNuevaTarea"><i class="fa-sharp fa-solid fa-clipboard-list"></i>Nueva tarea</button>
+    <button id="qaNuevoCliente"><i class="fa-sharp fa-solid fa-user-plus"></i>Nuevo cliente</button>
+    <button id="qaNuevaAudiencia"><i class="fa-sharp fa-solid fa-gavel"></i>Nueva audiencia</button>
+    <button id="qaBuscar"><i class="fa-sharp fa-solid fa-magnifying-glass"></i>Buscar (⌘/Ctrl+K)</button>
+  </div>
+  <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
+    <button class="tab" data-tab="hoy"><i class="fa-sharp fa-solid fa-calendar-day"></i><span>Hoy</span></button>
+    <button class="tab" data-tab="audiencias"><i class="fa-sharp fa-solid fa-gavel"></i><span>Casos</span></button>
+    <button class="tab" data-tab="clientes"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
+    <button class="tab" data-tab="dashboard"><i class="fa-sharp fa-solid fa-table-columns"></i><span>Más</span></button>
+  </nav>
+  <div id="commandPalette" class="command-palette oculto" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+    <div class="command-palette-dialog">
+      <h3 id="commandPaletteTitle">Ir a…</h3>
+      <input type="search" id="commandPaletteInput" placeholder="Escribe un comando o sección..." />
+      <div id="commandPaletteResults"></div>
+    </div>
   </div>
 
 

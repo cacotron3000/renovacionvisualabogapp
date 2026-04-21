@@ -114,7 +114,7 @@ function cargarTareasDia() {
     });
   });
   document
-    .querySelectorAll("#tareasDiaCantidad, #tareasDiaCantidadDashboard")
+    .querySelectorAll("#tareasNavCantidad, #tareasDiaCantidad, #tareasDiaCantidadDashboard")
     .forEach(cant => (cant.textContent = tareas.length));
   const headerTotal = document.getElementById("totalTareasPendientes");
   if (headerTotal) headerTotal.textContent = tareas.length;
