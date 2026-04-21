@@ -17,6 +17,8 @@ const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 horas
 let sessionTimer;
 let sessionStart = parseInt(localStorage.getItem("sessionStart") || Date.now());
 window.sesionExpirada = false;
+let autoSyncGoogleInterval = null;
+let autoSyncGoogleEnCurso = false;
 
 const DEFAULT_CONFIG = {
   radius: "12px",
@@ -224,6 +226,10 @@ async function cargarNotificacionesDesdeSupabase() {
 }
 
 async function cerrarSesion() {
+  if (autoSyncGoogleInterval) {
+    clearInterval(autoSyncGoogleInterval);
+    autoSyncGoogleInterval = null;
+  }
   localStorage.removeItem("usuarioActual");
   localStorage.removeItem("sessionStart");
   if (window.sb && sb.auth) {
@@ -697,7 +703,7 @@ function mostrarDetalleEntidad(tipo, data) {
        <h4>Próxima acción</h4><p>${data.proximaAccion || "-"}</p>
        <h4>Acciones rápidas</h4>
        <div class="quick-panel-actions">
-         <button class="mini-boton" onclick="cambiarVista('hoy')">Ir a hoy</button>
+         <button class="mini-boton" onclick="cambiarVista('dashboard')">Ir a dashboard</button>
          <button class="quickpanel-edit-btn" onclick="if (typeof editarTarea==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarTarea(${data.id}); mostrarModal(document.getElementById('ModalFormularioTarea'));}">✏️ Editar</button>
        </div>`
     );
@@ -740,6 +746,47 @@ function mostrarDetalleEntidad(tipo, data) {
     return;
   }
   if (tipoNorm === "cliente") {
+    const expedientes = JSON.parse(localStorage.getItem("expedientes") || "[]");
+    const expedienteIds = new Set(
+      expedientes
+        .filter((e) => e.clienteId === data.id)
+        .map((e) => e.id)
+    );
+    const tareasGestionArchivadas = JSON.parse(localStorage.getItem("tareasArchivadas") || "[]");
+    const tareasDiaArchivadas = JSON.parse(localStorage.getItem("tareasDiaArchivadas") || "[]");
+    const audienciasArchivadas = JSON.parse(localStorage.getItem("audienciasArchivadas") || "[]");
+    const historialTareas = tareasGestionArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.titulo || t.texto || "Sin título",
+        fecha: t.archivadoEn || t.fin || t.fechaFin || t.created_at || "",
+      }));
+    const historialTareasDia = tareasDiaArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.texto || "Tarea del día",
+        fecha: t.archivadoEn || t.fechaFin || t.creadoEn || "",
+      }));
+    const historialAudiencias = audienciasArchivadas
+      .filter((a) => a.clienteId === data.id || expedienteIds.has(a.expedienteId))
+      .map((a) => ({
+        tipo: "Audiencia",
+        titulo: a.titulo || "Sin título",
+        fecha: a.archivadoEn || a.fecha || "",
+      }));
+    const historial = [...historialTareas, ...historialTareasDia, ...historialAudiencias]
+      .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+      .slice(0, 12);
+    const historialHtml = historial.length
+      ? `<ul class="historial-lista">${historial
+          .map(
+            (h) =>
+              `<li><span class="historial-tipo">${h.tipo}</span><span>${h.titulo}</span><small>${h.fecha ? formatearCorta(h.fecha) : "-"}</small></li>`
+          )
+          .join("")}</ul>`
+      : `<p>Sin tareas/audiencias finalizadas asociadas.</p>`;
     abrirQuickPanel(
       `Cliente: ${data.nombre || "Sin nombre"}`,
       `<h4>Resumen</h4><p><strong>Correo:</strong> ${data.correo || "-"}</p>
@@ -747,6 +794,8 @@ function mostrarDetalleEntidad(tipo, data) {
        <p><strong>Dirección:</strong> ${data.direccion || "-"}</p>
        <p><strong>RUT:</strong> ${data.rut || "-"}</p>
        <p><strong>Notas:</strong> ${data.confidencial || "-"}</p>
+       <h4>Historial reciente</h4>
+       ${historialHtml}
        <button class="quickpanel-edit-btn" onclick="if (typeof editarCliente==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarCliente(${data.id}); mostrarModal(document.getElementById('modalFormulario'));}">✏️ Editar</button>`
     );
     return;
@@ -936,8 +985,12 @@ function cambiarVista(vistaId) {
   vistaFinal.classList.remove("oculto");
   vistaActual = vistaId;
 
-  const botonActivo = document.querySelector(`.tab[data-tab="${vistaId}"]`);
-  if (botonActivo) botonActivo.classList.add("active");
+  document
+    .querySelectorAll(`.tab[data-tab="${vistaId}"]`)
+    .forEach((botonActivo) => botonActivo.classList.add("active"));
+  if (typeof window.actualizarKPIsWorkspace === "function") {
+    window.actualizarKPIsWorkspace();
+  }
 }
 
 let generadorNativoMontado = false;
@@ -1071,8 +1124,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
   const hoyResponsableFiltro = document.getElementById("hoyResponsableFiltro");
   const hoyExportSemanal = document.getElementById("hoyExportSemanal");
+  const syncAudienciasGoogleBtn = document.getElementById("syncAudienciasGoogleBtn");
   const sidebar = document.querySelector(".sidebar");
   const toggleSidebarBtn = document.getElementById("toggleSidebar");
+  const quickActionFab = document.getElementById("quickActionFab");
+  const quickActionMenu = document.getElementById("quickActionMenu");
+  const qaNuevaTarea = document.getElementById("qaNuevaTarea");
+  const qaNuevoCliente = document.getElementById("qaNuevoCliente");
+  const qaNuevaAudiencia = document.getElementById("qaNuevaAudiencia");
+  const qaBuscar = document.getElementById("qaBuscar");
+  const commandPalette = document.getElementById("commandPalette");
+  const commandPaletteInput = document.getElementById("commandPaletteInput");
+  const commandPaletteResults = document.getElementById("commandPaletteResults");
   iniciarSincronizacionTemaGeneradorNativo();
   window.updateSyncStatus = (state = "syncing", text = "") => {
     if (!syncStatus) return;
@@ -1175,6 +1238,84 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (quickPanelCerrar && quickPanel) {
     quickPanelCerrar.addEventListener("click", () => quickPanel.classList.add("oculto"));
   }
+
+  const comandos = [
+    { label: "Ir a Dashboard", vista: "dashboard" },
+    { label: "Abrir Audiencias", vista: "audiencias" },
+    { label: "Abrir Tareas", vista: "tareas" },
+    { label: "Abrir Clientes", vista: "clientes" },
+    { label: "Abrir Documentos", vista: "generador" },
+    { label: "Abrir Operación interna", vista: "internas" },
+  ];
+
+  const actualizarKPIsWorkspace = () => {
+    const tareasDia = JSON.parse(localStorage.getItem("tareasDia") || "[]");
+    const audiencias = JSON.parse(localStorage.getItem("audiencias") || "[]");
+    const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const vencenHoy = tareasDia.filter((t) => t.fechaFin && parseFechaLocal(t.fechaFin)?.getTime() === hoy.getTime()).length;
+    const riesgoAlto = tareasDia.filter((t) => t.prioridad === "alta").length;
+    const carga = tareasDia.length ? Math.min(100, Math.round((riesgoAlto / tareasDia.length) * 100)) : 0;
+    const setText = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+    setText("kpiVencimientosHoy", String(vencenHoy));
+    setText("kpiRiesgoAlto", String(riesgoAlto));
+    setText("kpiCargaEquipo", `${carga}%`);
+    setText("kpiCasosActivos", String(Math.max(audiencias.length, clientes.length)));
+  };
+  window.actualizarKPIsWorkspace = actualizarKPIsWorkspace;
+  actualizarKPIsWorkspace();
+
+  function abrirCommandPalette() {
+    if (!commandPalette || !commandPaletteInput || !commandPaletteResults) return;
+    commandPalette.classList.remove("oculto");
+    commandPaletteInput.value = "";
+    commandPaletteResults.innerHTML = comandos
+      .map((c) => `<button type="button" data-vista="${c.vista}">${c.label}</button>`)
+      .join("");
+    commandPaletteInput.focus();
+  }
+  function cerrarCommandPalette() {
+    commandPalette?.classList.add("oculto");
+  }
+
+  if (commandPalette && commandPaletteInput && commandPaletteResults) {
+    commandPalette.addEventListener("click", (e) => {
+      if (e.target === commandPalette) cerrarCommandPalette();
+    });
+    commandPaletteResults.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-vista]");
+      if (!btn) return;
+      const vista = btn.getAttribute("data-vista");
+      if (!vista) return;
+      localStorage.setItem("ultimaVista", vista);
+      cambiarVista(vista);
+      cerrarCommandPalette();
+    });
+    commandPaletteInput.addEventListener("input", () => {
+      const q = commandPaletteInput.value.trim().toLowerCase();
+      const filtrados = comandos.filter((c) => c.label.toLowerCase().includes(q));
+      commandPaletteResults.innerHTML = filtrados
+        .map((c) => `<button type="button" data-vista="${c.vista}">${c.label}</button>`)
+        .join("") || `<p style="padding:12px;">Sin resultados</p>`;
+    });
+  }
+
+  if (quickActionFab && quickActionMenu) {
+    quickActionFab.addEventListener("click", () => quickActionMenu.classList.toggle("oculto"));
+    document.addEventListener("click", (e) => {
+      if (quickActionMenu.classList.contains("oculto")) return;
+      if (quickActionMenu.contains(e.target) || quickActionFab.contains(e.target)) return;
+      quickActionMenu.classList.add("oculto");
+    });
+  }
+  qaNuevaTarea?.addEventListener("click", () => document.getElementById("nuevaTareaDiaBtnDashboard")?.click());
+  qaNuevoCliente?.addEventListener("click", () => document.getElementById("abrirFormulario")?.click());
+  qaNuevaAudiencia?.addEventListener("click", () => document.getElementById("nuevaAudienciaBtn")?.click());
+  qaBuscar?.addEventListener("click", abrirCommandPalette);
   if (quickPanel) {
     document.addEventListener("click", (event) => {
       if (quickPanel.classList.contains("oculto")) return;
@@ -1305,28 +1446,96 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tag = (e.target?.tagName || "").toLowerCase();
     const editando = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
     if (editando) return;
-    if (e.key === "/") {
+    if ((e.shiftKey && e.key.toLowerCase() === "f") || (e.shiftKey && e.key === "?")) {
       e.preventDefault();
       busquedaGlobalInput?.focus();
       return;
     }
-    if (e.key.toLowerCase() === "g") {
+    if (e.shiftKey && e.code === "Space") {
+      e.preventDefault();
+      abrirCommandPalette();
+      return;
+    }
+    if (e.key === "Escape") {
+      cerrarCommandPalette();
+    }
+    if (e.shiftKey && e.key.toLowerCase() === "d") {
       localStorage.setItem("ultimaVista", "dashboard");
       cambiarVista("dashboard");
       return;
     }
-    if (e.key.toLowerCase() === "h") {
-      localStorage.setItem("ultimaVista", "hoy");
-      cambiarVista("hoy");
-      return;
-    }
-    if (e.key.toLowerCase() === "n") {
+    if (e.shiftKey && e.key.toLowerCase() === "n") {
       document.getElementById("nuevaTareaDiaBtnDashboard")?.click();
     }
-    if (e.key.toLowerCase() === "c") {
+    if (e.shiftKey && e.key.toLowerCase() === "c") {
       document.getElementById("abrirFormulario")?.click();
     }
   });
+
+  async function ejecutarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleEnCurso) return;
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      const cambios = (resp?.audiencias_upserted || 0) + (resp?.audiencias_deleted || 0);
+      if (cambios > 0 && typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+    } catch (error) {
+      console.warn("Auto-sync Google Calendar falló:", error);
+    } finally {
+      autoSyncGoogleEnCurso = false;
+    }
+  }
+
+  async function sincronizarGoogleCalendarManual(boton = null) {
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) {
+      mostrarNotificacion("Sincronización Google Calendar no disponible", "#D7263D");
+      return null;
+    }
+    if (autoSyncGoogleEnCurso) {
+      mostrarNotificacion("Sincronización en curso, intenta nuevamente en unos segundos", "#FF9800");
+      return null;
+    }
+    const labelOriginal = boton ? boton.innerHTML : "";
+    if (boton) {
+      boton.disabled = true;
+      boton.innerHTML = "<i class='fa-sharp fa-solid fa-spinner fa-spin'></i> Sincronizando...";
+    }
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      if (typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+      mostrarNotificacion(
+        `Google Calendar sincronizado: ${resp?.audiencias_upserted || 0} audiencias cargadas.`,
+        "#00A36C"
+      );
+      return resp;
+    } catch (error) {
+      console.error("Error sincronizando Google Calendar:", error);
+      mostrarNotificacion("No se pudo sincronizar Google Calendar", "#D7263D");
+      return null;
+    } finally {
+      autoSyncGoogleEnCurso = false;
+      if (boton) {
+        boton.disabled = false;
+        boton.innerHTML = labelOriginal;
+      }
+    }
+  }
+
+  function iniciarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleInterval || !window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    ejecutarAutoSyncGoogleCalendar();
+    autoSyncGoogleInterval = setInterval(ejecutarAutoSyncGoogleCalendar, 60 * 1000);
+  }
+
+  if (syncAudienciasGoogleBtn) {
+    syncAudienciasGoogleBtn.addEventListener("click", () => sincronizarGoogleCalendarManual(syncAudienciasGoogleBtn));
+  }
 
   aplicarConfiguracion();
 
@@ -1368,10 +1577,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       supabaseSync.subscribeNotificaciones();
     }
     refrescarDatos();
+      actualizarKPIsWorkspace();
       cambiarVista(vistaActual);
       if (typeof actualizarDashboard === "function") {
         actualizarDashboard();
       }
+      iniciarAutoSyncGoogleCalendar();
     }
 
     let usuarioActual = null;
@@ -1493,6 +1704,63 @@ document.addEventListener("DOMContentLoaded", async () => {
     botonCerrar.addEventListener("click", cerrarSesion);
   }
 
+  const botonPresentacion = document.getElementById("iniciarPresentacion");
+  const vistasPresentacion = ["tareas", "audiencias", "internas"];
+  let timerPresentacion = null;
+  let idxPresentacion = 0;
+
+  function actualizarBotonPresentacion(activa) {
+    if (!botonPresentacion) return;
+    botonPresentacion.innerHTML = activa
+      ? "<i class='fa-sharp fa-solid fa-circle-stop'></i><span> Salir presentación</span>"
+      : "<i class='fa-sharp fa-solid fa-display'></i><span> Presentación</span>";
+  }
+
+  function desactivarPresentacion(forzarExitFullscreen = true) {
+    if (timerPresentacion) {
+      clearInterval(timerPresentacion);
+      timerPresentacion = null;
+    }
+    document.body.classList.remove("presentacion-mode");
+    actualizarBotonPresentacion(false);
+    if (forzarExitFullscreen && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  async function activarPresentacion() {
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {
+      mostrarNotificacion("No se pudo activar pantalla completa automáticamente", "#FF9800");
+    }
+    document.body.classList.add("presentacion-mode");
+    idxPresentacion = 0;
+    cambiarVista(vistasPresentacion[idxPresentacion]);
+    timerPresentacion = setInterval(() => {
+      idxPresentacion = (idxPresentacion + 1) % vistasPresentacion.length;
+      cambiarVista(vistasPresentacion[idxPresentacion]);
+    }, 12000);
+    actualizarBotonPresentacion(true);
+  }
+
+  if (botonPresentacion) {
+    botonPresentacion.addEventListener("click", async () => {
+      if (timerPresentacion) {
+        desactivarPresentacion();
+      } else {
+        await activarPresentacion();
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement && timerPresentacion) {
+        desactivarPresentacion(false);
+      }
+    });
+  }
+
   const modalAlerta = document.getElementById("modalAlerta");
   if (modalAlerta) {
     const cerrarAlerta = document.getElementById("modalAlertaCerrar");
@@ -1561,6 +1829,111 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (btnConfig && modalConfig) {
     const cerrarConfig = document.getElementById("cerrarModalConfiguracion");
     const guardarConfig = document.getElementById("guardarConfiguracion");
+    const exportarJsonLocalBtn = document.getElementById("exportarJsonLocalBtn");
+    const importarJsonLocalBtn = document.getElementById("importarJsonLocalBtn");
+    const importarJsonLocalInput = document.getElementById("importarJsonLocalInput");
+    const sincronizarGoogleCalendarBtn = document.getElementById("sincronizarGoogleCalendarBtn");
+    const tablasSync = [
+      { table: "clientes", key: "clientes" },
+      { table: "expedientes", key: "expedientes" },
+      { table: "casosarchivados", key: "casosarchivados" },
+      { table: "tareas", key: "tareas" },
+      { table: "gestionesarchivadas", key: "tareasArchivadas" },
+      { table: "diario", key: "tareasDia" },
+      { table: "diarioarchivadas", key: "tareasDiaArchivadas" },
+      { table: "tareasinternas", key: "tareasInternas" },
+      { table: "comentarios_clientes", key: "comentariosClientes" },
+      { table: "comentarios_expedientes", key: "comentariosExpedientes" },
+      { table: "comentarios_tareas", key: "comentariosTareas" },
+      { table: "audiencias", key: "audiencias" },
+      { table: "audienciasarchivadas", key: "audienciasArchivadas" },
+      { table: "notificaciones", key: "notificaciones" },
+    ];
+
+    function construirBackupLocal() {
+      const data = {};
+      tablasSync.forEach(({ key }) => {
+        data[key] = JSON.parse(localStorage.getItem(key) || "[]");
+      });
+      return {
+        schema: "abogapp-local-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        exportedBy: JSON.parse(localStorage.getItem("usuarioActual") || "null")?.usuario || "desconocido",
+        data,
+      };
+    }
+
+    async function sincronizarImportacionConCpanel() {
+      if (!window.supabaseSync) return true;
+      let ok = true;
+      for (const { table } of tablasSync) {
+        const res = await window.supabaseSync.pushTabla(table);
+        if (!res) ok = false;
+      }
+      return ok;
+    }
+
+    function normalizarTexto(v) {
+      return String(v || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function claveDedupePorNombre(key, item) {
+      if (!item || typeof item !== "object") return "";
+      if (key === "clientes") return `nombre:${normalizarTexto(item.nombre)}`;
+      if (key === "audiencias" || key === "audienciasArchivadas") {
+        return `titulo:${normalizarTexto(item.titulo)}`;
+      }
+      if (
+        key === "tareas" ||
+        key === "tareasArchivadas" ||
+        key === "tareasDia" ||
+        key === "tareasDiaArchivadas" ||
+        key === "tareasInternas"
+      ) {
+        return `tarea:${normalizarTexto(item.titulo || item.texto)}`;
+      }
+      return "";
+    }
+
+    function fusionarColeccion(key, actuales, importados) {
+      const base = Array.isArray(actuales) ? actuales.slice() : [];
+      const mapa = new Map();
+      base.forEach((row, idx) => {
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":")) {
+          mapa.set(claveNombre, idx);
+          return;
+        }
+        if (row && typeof row === "object" && row.id !== undefined && row.id !== null) {
+          mapa.set(`id:${row.id}`, idx);
+        }
+      });
+
+      (Array.isArray(importados) ? importados : []).forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":") && mapa.has(claveNombre)) {
+          base[mapa.get(claveNombre)] = row;
+          return;
+        }
+        const claveId =
+          row.id !== undefined && row.id !== null ? `id:${row.id}` : "";
+        if (claveId && mapa.has(claveId)) {
+          base[mapa.get(claveId)] = row;
+          return;
+        }
+        const pos = base.push(row) - 1;
+        if (claveNombre && !claveNombre.endsWith(":")) mapa.set(claveNombre, pos);
+        else if (claveId) mapa.set(claveId, pos);
+      });
+      return base;
+    }
+
     btnConfig.addEventListener("click", () => {
       document.getElementById("configRadio").value = configuracion.radius;
       document.getElementById("configTema").value = configuracion.tema;
@@ -1610,6 +1983,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (guardarConfig) {
       guardarConfig.addEventListener("click", () => {
         modalConfig.classList.add("oculto");
+      });
+    }
+
+    if (exportarJsonLocalBtn) {
+      exportarJsonLocalBtn.addEventListener("click", () => {
+        const backup = construirBackupLocal();
+        const blob = new Blob([JSON.stringify(backup, null, 2)], {
+          type: "application/json;charset=utf-8",
+        });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `abogapp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        mostrarNotificacion("JSON local exportado correctamente", "#00A36C");
+      });
+    }
+
+    if (importarJsonLocalBtn && importarJsonLocalInput) {
+      importarJsonLocalBtn.addEventListener("click", () => importarJsonLocalInput.click());
+      importarJsonLocalInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+          const raw = await file.text();
+          const parsed = JSON.parse(raw);
+          const payload = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+          if (!payload || typeof payload !== "object") {
+            mostrarNotificacion("JSON inválido para importación", "#D7263D");
+            return;
+          }
+          if (!confirm("Esto combinará el JSON con la base local (solo reemplaza si cliente/audiencia/tarea tienen el mismo nombre) y luego sincronizará con cPanel. ¿Deseas continuar?")) {
+            return;
+          }
+          tablasSync.forEach(({ key }) => {
+            const value = payload[key];
+            if (Array.isArray(value)) {
+              const actuales = JSON.parse(localStorage.getItem(key) || "[]");
+              const fusionados = fusionarColeccion(key, actuales, value);
+              localStorage.setItem(key, JSON.stringify(fusionados));
+            }
+          });
+          const sincronizado = await sincronizarImportacionConCpanel();
+          if (typeof window.refrescarDatos === "function") {
+            window.refrescarDatos(["clientes", "tareasDia", "audiencias", "dashboard", "internas", "notificaciones"]);
+          }
+          mostrarNotificacion(
+            sincronizado
+              ? "JSON importado y sincronizado con cPanel"
+              : "JSON importado localmente, pero hubo errores al sincronizar cPanel",
+            sincronizado ? "#00A36C" : "#FF9800"
+          );
+        } catch (error) {
+          console.error("Error importando JSON local:", error);
+          mostrarNotificacion("No se pudo importar el JSON", "#D7263D");
+        } finally {
+          importarJsonLocalInput.value = "";
+        }
+      });
+    }
+
+    if (sincronizarGoogleCalendarBtn) {
+      sincronizarGoogleCalendarBtn.addEventListener("click", async () => {
+        await sincronizarGoogleCalendarManual(sincronizarGoogleCalendarBtn);
       });
     }
   }
