@@ -1191,7 +1191,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const comandos = [
     { label: "Ir a Dashboard", vista: "dashboard" },
-    { label: "Abrir Hoy", vista: "hoy" },
     { label: "Abrir Audiencias", vista: "audiencias" },
     { label: "Abrir Tareas", vista: "tareas" },
     { label: "Abrir Clientes", vista: "clientes" },
@@ -1413,11 +1412,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key.toLowerCase() === "g") {
       localStorage.setItem("ultimaVista", "dashboard");
       cambiarVista("dashboard");
-      return;
-    }
-    if (e.key.toLowerCase() === "h") {
-      localStorage.setItem("ultimaVista", "hoy");
-      cambiarVista("hoy");
       return;
     }
     if (e.key.toLowerCase() === "n") {

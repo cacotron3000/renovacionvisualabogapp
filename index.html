@@ -87,7 +87,6 @@
       <button id="toggleSidebar" class="sidebar-toggle"><i class="fa-sharp fa-solid fa-bars"></i></button>
       <!-- Cada botón representa una vista distinta. Se usarán para mostrar/ocultar secciones -->
       <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Dashboard</span></button>
-      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Hoy</span></button>
       <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
       <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
       <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
@@ -151,28 +150,6 @@
   </div>
 
 </section>
-
-      <!-- SECCION HOY -->
-      <section id="vista-hoy" class="vista oculto">
-        <div class="dashboard-card">
-          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Bandeja de hoy</h2>
-          <div id="hoyFiltros" class="hoy-filtros">
-            <button class="mini-boton" data-hoy-filtro="todos">Todos</button>
-            <button class="mini-boton" data-hoy-filtro="hoy">Hoy</button>
-            <button class="mini-boton" data-hoy-filtro="vencidas">Vencidas</button>
-            <button class="mini-boton" data-hoy-filtro="semana">Semana</button>
-            <select id="hoyResponsableFiltro" class="mini-boton">
-              <option value="">Responsable: todos</option>
-            </select>
-            <button id="hoyExportSemanal" class="mini-boton">Exportar semanal</button>
-          </div>
-          <div id="hoyResumenCarga"></div>
-          <div id="hoyCalendarioSemanal"></div>
-          <div id="hoyKanban"></div>
-          <div id="hoyAuditoria"></div>
-          <div id="hoyLista"></div>
-        </div>
-      </section>
 
       <!-- Panel lateral rápido -->
       <aside id="quickPanel" class="oculto">
@@ -277,9 +254,9 @@
     <button id="qaBuscar"><i class="fa-sharp fa-solid fa-magnifying-glass"></i>Buscar (⌘/Ctrl+K)</button>
   </div>
   <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
-    <button class="tab" data-tab="hoy"><i class="fa-sharp fa-solid fa-calendar-day"></i><span>Hoy</span></button>
     <button class="tab" data-tab="audiencias"><i class="fa-sharp fa-solid fa-gavel"></i><span>Audiencias</span></button>
     <button class="tab" data-tab="clientes"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
+    <button class="tab" data-tab="tareas"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span></button>
     <button class="tab" data-tab="dashboard"><i class="fa-sharp fa-solid fa-table-columns"></i><span>Más</span></button>
   </nav>
   <div id="commandPalette" class="command-palette oculto" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
