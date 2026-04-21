@@ -168,6 +168,186 @@ function nextSequenceValue(PDO $pdo, string $name, int $min = 1): int {
     }
 }
 
+function base64UrlEncode(string $input): string {
+    return rtrim(strtr(base64_encode($input), '+/', '-_'), '=');
+}
+
+function googleServiceAccountToken(array $config): string {
+    $path = $config['google_service_account_json_path'] ?? '';
+    if (!$path || !file_exists($path)) {
+        apiFail('No existe google_service_account_json_path en config.php', 500);
+    }
+    $sa = json_decode((string) file_get_contents($path), true);
+    if (!is_array($sa) || empty($sa['client_email']) || empty($sa['private_key'])) {
+        apiFail('Credenciales de Service Account inválidas.', 500);
+    }
+
+    $now = time();
+    $header = ['alg' => 'RS256', 'typ' => 'JWT'];
+    $claims = [
+        'iss' => $sa['client_email'],
+        'scope' => 'https://www.googleapis.com/auth/calendar.readonly',
+        'aud' => 'https://oauth2.googleapis.com/token',
+        'exp' => $now + 3600,
+        'iat' => $now,
+    ];
+    $jwtUnsigned = base64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES)) . '.' .
+        base64UrlEncode(json_encode($claims, JSON_UNESCAPED_SLASHES));
+    $signature = '';
+    if (!openssl_sign($jwtUnsigned, $signature, $sa['private_key'], OPENSSL_ALGO_SHA256)) {
+        apiFail('No fue posible firmar JWT de Google.', 500);
+    }
+    $jwt = $jwtUnsigned . '.' . base64UrlEncode($signature);
+
+    $payload = http_build_query([
+        'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        'assertion' => $jwt,
+    ]);
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($resp === false) {
+        apiFail('Error OAuth Google: ' . curl_error($ch), 500);
+    }
+    curl_close($ch);
+    $json = json_decode($resp, true);
+    if ($code >= 400 || empty($json['access_token'])) {
+        apiFail('No se obtuvo access token de Google.', 500);
+    }
+    return (string) $json['access_token'];
+}
+
+function googleApiGet(string $url, string $token): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Accept: application/json'],
+        CURLOPT_TIMEOUT => 25,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($resp === false) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException('Error consultando Google Calendar: ' . $err);
+    }
+    curl_close($ch);
+    $json = json_decode($resp, true);
+    if ($code >= 400) {
+        $message = is_array($json) ? json_encode($json, JSON_UNESCAPED_UNICODE) : ('HTTP ' . $code);
+        throw new RuntimeException('Google Calendar API error: ' . $message, $code);
+    }
+    return is_array($json) ? $json : [];
+}
+
+function gcalAppId(string $googleEventId): int {
+    $hex = substr(md5('gcal:' . $googleEventId), 0, 12);
+    return (int) base_convert($hex, 16, 10);
+}
+
+function textoNormalizado(string $txt): string {
+    $txt = mb_strtolower(trim($txt), 'UTF-8');
+    $txt = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $txt) ?: $txt;
+    return strtolower($txt);
+}
+
+function gcalMatchesKeywords(array $event, array $keywords): bool {
+    $pool = trim(
+        ($event['summary'] ?? '') . ' ' .
+        ($event['description'] ?? '') . ' ' .
+        ($event['location'] ?? '')
+    );
+    $poolNorm = textoNormalizado($pool);
+    if (!$poolNorm) return false;
+    foreach ($keywords as $kw) {
+        $kwNorm = textoNormalizado((string) $kw);
+        if ($kwNorm !== '' && strpos($poolNorm, $kwNorm) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function gcalEventToAudiencia(array $event): array {
+    $start = $event['start'] ?? [];
+    $startRaw = (string) ($start['dateTime'] ?? $start['date'] ?? '');
+    $dt = null;
+    if ($startRaw !== '') {
+        try { $dt = new DateTime($startRaw); } catch (Throwable $e) { $dt = null; }
+    }
+    $fecha = $dt ? $dt->format('Y-m-d') : date('Y-m-d');
+    $hora = $dt ? $dt->format('H:i') : '09:00';
+    $titulo = trim((string) ($event['summary'] ?? 'Evento de calendario'));
+    $texto = textoNormalizado(
+        $titulo . ' ' . (string) ($event['description'] ?? '') . ' ' . (string) ($event['location'] ?? '')
+    );
+    $tipo = 'audiencia';
+    foreach (['preparatoria', 'monitorio', 'alegato', 'juicio'] as $kw) {
+        if (strpos($texto, $kw) !== false) { $tipo = $kw; break; }
+    }
+    $modalidad = 'presencial';
+    if (strpos($texto, 'presencial') !== false) {
+        $modalidad = 'presencial';
+    } elseif (
+        strpos($texto, 'zoom') !== false ||
+        strpos($texto, 'telematico') !== false ||
+        strpos($texto, 'telematica') !== false
+    ) {
+        $modalidad = 'telematica';
+    }
+    return [
+        'id' => gcalAppId((string) $event['id']),
+        'titulo' => $titulo,
+        'tipo' => $tipo,
+        'modalidad' => $modalidad,
+        'urgencia' => 'media',
+        'fecha' => $fecha,
+        'hora' => $hora,
+        'notas' => trim((string) ($event['description'] ?? '')),
+        'fuente' => 'google_calendar',
+        'googleEventId' => (string) ($event['id'] ?? ''),
+        'googleCalendarId' => (string) ($event['organizer']['email'] ?? ''),
+        'googleHtmlLink' => (string) ($event['htmlLink'] ?? ''),
+    ];
+}
+
+function gcalEventStartDateYmd(array $event): ?string {
+    $start = $event['start'] ?? [];
+    $startRaw = (string) ($start['dateTime'] ?? $start['date'] ?? '');
+    if ($startRaw === '') return null;
+    try {
+        $dt = new DateTime($startRaw);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+function getGoogleSyncToken(PDO $pdo, string $calendarId): ?string {
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+    $stmt->execute(['table' => 'google_calendar_meta', 'id' => gcalAppId('meta:' . $calendarId)]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+    $data = json_decode($row['payload'] ?? 'null', true);
+    return is_array($data) ? ($data['syncToken'] ?? null) : null;
+}
+
+function saveGoogleSyncToken(PDO $pdo, string $calendarId, string $syncToken): void {
+    upsertRecords($pdo, 'google_calendar_meta', [[
+        'id' => gcalAppId('meta:' . $calendarId),
+        'calendarId' => $calendarId,
+        'syncToken' => $syncToken,
+        'updatedAt' => date('c'),
+    ]]);
+}
+
 switch ($action) {
     case 'pull_table': {
         $table = $_GET['table'] ?? '';
@@ -213,6 +393,99 @@ switch ($action) {
         $stmt->execute(['table' => $table, 'app_id' => (int) $appId]);
         logAudit($pdo, 'delete', $table, (int) $appId, null);
         echo json_encode(['ok' => true]);
+        break;
+    }
+
+    case 'sync_google_calendar_audiencias': {
+        $calendarId = trim((string) ($config['google_calendar_id'] ?? ''));
+        if ($calendarId === '') {
+            apiFail('Falta google_calendar_id en config.php', 500);
+        }
+        $keywords = $config['google_keywords'] ?? ['preparatoria', 'monitorio', 'alegato', 'juicio'];
+        if (!is_array($keywords) || !$keywords) {
+            $keywords = ['preparatoria', 'monitorio', 'alegato', 'juicio'];
+        }
+        $token = googleServiceAccountToken($config);
+        $syncToken = getGoogleSyncToken($pdo, $calendarId);
+        $todayYmd = date('Y-m-d');
+
+        $items = [];
+        $nextSyncToken = null;
+        $pageToken = null;
+        $modeIncremental = (bool) $syncToken;
+
+        $fetchLoop = function (?string $syncTok) use (&$items, &$nextSyncToken, &$pageToken, $token, $calendarId) {
+            $items = [];
+            $nextSyncToken = null;
+            $pageToken = null;
+            do {
+                $params = [
+                    'maxResults' => 2500,
+                    'singleEvents' => 'true',
+                    'showDeleted' => 'true',
+                ];
+                if ($pageToken) $params['pageToken'] = $pageToken;
+                if ($syncTok) {
+                    $params['syncToken'] = $syncTok;
+                } else {
+                    $params['orderBy'] = 'startTime';
+                    $params['timeMin'] = (new DateTime('now'))->format(DateTime::ATOM);
+                }
+                $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events?' . http_build_query($params);
+                $resp = googleApiGet($url, $token);
+                $items = array_merge($items, $resp['items'] ?? []);
+                $pageToken = $resp['nextPageToken'] ?? null;
+                $nextSyncToken = $resp['nextSyncToken'] ?? $nextSyncToken;
+            } while ($pageToken);
+        };
+
+        try {
+            $fetchLoop($syncToken);
+        } catch (Throwable $e) {
+            // Si el sync token expiró (410), reintentar full sync.
+            if ($modeIncremental && strpos($e->getMessage(), '"code": 410') !== false) {
+                $syncToken = null;
+                $modeIncremental = false;
+                $fetchLoop(null);
+            } else {
+                apiFail('Error sincronizando Google Calendar: ' . $e->getMessage(), 500);
+            }
+        }
+
+        $toUpsert = [];
+        $deleted = 0;
+        foreach ($items as $ev) {
+            $eventId = (string) ($ev['id'] ?? '');
+            if ($eventId === '') continue;
+            if (($ev['status'] ?? '') === 'cancelled') {
+                $stmt = $pdo->prepare('DELETE FROM abogapp_records WHERE table_name = :table AND app_id = :id');
+                $stmt->execute(['table' => 'audiencias', 'id' => gcalAppId($eventId)]);
+                $deleted += (int) $stmt->rowCount();
+                continue;
+            }
+            $eventDate = gcalEventStartDateYmd($ev);
+            if ($eventDate && $eventDate < $todayYmd) {
+                continue;
+            }
+            if (!gcalMatchesKeywords($ev, $keywords)) continue;
+            $toUpsert[] = gcalEventToAudiencia($ev);
+        }
+
+        $saved = 0;
+        if ($toUpsert) {
+            $result = upsertRecords($pdo, 'audiencias', $toUpsert);
+            $saved = (int) ($result['saved'] ?? 0);
+        }
+        if ($nextSyncToken) {
+            saveGoogleSyncToken($pdo, $calendarId, $nextSyncToken);
+        }
+        echo json_encode([
+            'ok' => true,
+            'synced_events' => count($items),
+            'audiencias_upserted' => $saved,
+            'audiencias_deleted' => $deleted,
+            'mode' => $modeIncremental ? 'incremental' : 'full',
+        ]);
         break;
     }
 

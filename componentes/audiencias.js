@@ -248,26 +248,24 @@ function terminarAudiencia(id) {
     const archivadas = obtenerAudienciasArchivadas();
     archivadas.push(fin);
     guardarAudienciasArchivadas(archivadas);
-    if (window.supabaseSync) {
-      supabaseSync.deleteRegistro("audiencias", id);
-      supabaseSync.pushRegistro("audienciasarchivadas", fin);
-    }
-    cargarAudiencias();
-    cargarAudienciasArchivadas();
-    mostrarAudienciasProximas();
-  }
+	    if (window.supabaseSync) {
+	      supabaseSync.deleteRegistro("audiencias", id);
+	      supabaseSync.pushRegistro("audienciasarchivadas", fin);
+	    }
+	    cargarAudiencias();
+	    cargarAudienciasArchivadas();
+	  }
 
   function eliminarAudiencia(id, archivada = false) {
     if (archivada) {
       const archivadas = obtenerAudienciasArchivadas().filter(a => a.id !== id);
       guardarAudienciasArchivadas(archivadas);
       cargarAudienciasArchivadas();
-    } else {
-      const audiencias = obtenerAudiencias().filter(a => a.id !== id);
-      guardarAudiencias(audiencias);
-      cargarAudiencias();
-      mostrarAudienciasProximas();
-    }
+	    } else {
+	      const audiencias = obtenerAudiencias().filter(a => a.id !== id);
+	      guardarAudiencias(audiencias);
+	      cargarAudiencias();
+	    }
     if (window.supabaseSync) {
       supabaseSync.deleteRegistro(archivada ? "audienciasarchivadas" : "audiencias", id);
     }

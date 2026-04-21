@@ -234,6 +234,14 @@
       });
       return Number(data?.numero || 0);
     },
+    async syncGoogleCalendarAudiencias() {
+      const { data } = await apiRequest("sync_google_calendar_audiencias", {
+        method: "POST",
+        body: {},
+      });
+      await pullTabla("audiencias");
+      return data || {};
+    },
   };
 
   async function fetchUsersList() {
