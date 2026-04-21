@@ -1699,6 +1699,50 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (btnConfig && modalConfig) {
     const cerrarConfig = document.getElementById("cerrarModalConfiguracion");
     const guardarConfig = document.getElementById("guardarConfiguracion");
+    const exportarJsonLocalBtn = document.getElementById("exportarJsonLocalBtn");
+    const importarJsonLocalBtn = document.getElementById("importarJsonLocalBtn");
+    const importarJsonLocalInput = document.getElementById("importarJsonLocalInput");
+    const tablasSync = [
+      { table: "clientes", key: "clientes" },
+      { table: "expedientes", key: "expedientes" },
+      { table: "casosarchivados", key: "casosarchivados" },
+      { table: "tareas", key: "tareas" },
+      { table: "gestionesarchivadas", key: "tareasArchivadas" },
+      { table: "diario", key: "tareasDia" },
+      { table: "diarioarchivadas", key: "tareasDiaArchivadas" },
+      { table: "tareasinternas", key: "tareasInternas" },
+      { table: "comentarios_clientes", key: "comentariosClientes" },
+      { table: "comentarios_expedientes", key: "comentariosExpedientes" },
+      { table: "comentarios_tareas", key: "comentariosTareas" },
+      { table: "audiencias", key: "audiencias" },
+      { table: "audienciasarchivadas", key: "audienciasArchivadas" },
+      { table: "notificaciones", key: "notificaciones" },
+    ];
+
+    function construirBackupLocal() {
+      const data = {};
+      tablasSync.forEach(({ key }) => {
+        data[key] = JSON.parse(localStorage.getItem(key) || "[]");
+      });
+      return {
+        schema: "abogapp-local-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        exportedBy: JSON.parse(localStorage.getItem("usuarioActual") || "null")?.usuario || "desconocido",
+        data,
+      };
+    }
+
+    async function sincronizarImportacionConCpanel() {
+      if (!window.supabaseSync) return true;
+      let ok = true;
+      for (const { table } of tablasSync) {
+        const res = await window.supabaseSync.pushTabla(table);
+        if (!res) ok = false;
+      }
+      return ok;
+    }
+
     btnConfig.addEventListener("click", () => {
       document.getElementById("configRadio").value = configuracion.radius;
       document.getElementById("configTema").value = configuracion.tema;
@@ -1748,6 +1792,62 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (guardarConfig) {
       guardarConfig.addEventListener("click", () => {
         modalConfig.classList.add("oculto");
+      });
+    }
+
+    if (exportarJsonLocalBtn) {
+      exportarJsonLocalBtn.addEventListener("click", () => {
+        const backup = construirBackupLocal();
+        const blob = new Blob([JSON.stringify(backup, null, 2)], {
+          type: "application/json;charset=utf-8",
+        });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `abogapp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        mostrarNotificacion("JSON local exportado correctamente", "#00A36C");
+      });
+    }
+
+    if (importarJsonLocalBtn && importarJsonLocalInput) {
+      importarJsonLocalBtn.addEventListener("click", () => importarJsonLocalInput.click());
+      importarJsonLocalInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+          const raw = await file.text();
+          const parsed = JSON.parse(raw);
+          const payload = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+          if (!payload || typeof payload !== "object") {
+            mostrarNotificacion("JSON inválido para importación", "#D7263D");
+            return;
+          }
+          if (!confirm("Esto reemplazará la base local de trabajo y la sincronizará con cPanel. ¿Deseas continuar?")) {
+            return;
+          }
+          tablasSync.forEach(({ key }) => {
+            const value = payload[key];
+            if (Array.isArray(value)) {
+              localStorage.setItem(key, JSON.stringify(value));
+            }
+          });
+          const sincronizado = await sincronizarImportacionConCpanel();
+          if (typeof window.refrescarDatos === "function") {
+            window.refrescarDatos(["clientes", "tareasDia", "audiencias", "dashboard", "internas", "notificaciones"]);
+          }
+          mostrarNotificacion(
+            sincronizado
+              ? "JSON importado y sincronizado con cPanel"
+              : "JSON importado localmente, pero hubo errores al sincronizar cPanel",
+            sincronizado ? "#00A36C" : "#FF9800"
+          );
+        } catch (error) {
+          console.error("Error importando JSON local:", error);
+          mostrarNotificacion("No se pudo importar el JSON", "#D7263D");
+        } finally {
+          importarJsonLocalInput.value = "";
+        }
       });
     }
   }

@@ -857,14 +857,22 @@
       <option value="DMY">DD/MM/AAAA</option>
       <option value="YMD">AAAA-MM-DD</option>
     </select>
-    <label for="configFormatoHora">Formato de hora</label>
-    <select id="configFormatoHora">
-      <option value="24">24 horas</option>
-      <option value="12">12 horas</option>
-    </select>
-    <button id="guardarConfiguracion" class="boton">Guardar</button>
-  </div>
-</div>
+	    <label for="configFormatoHora">Formato de hora</label>
+	    <select id="configFormatoHora">
+	      <option value="24">24 horas</option>
+	      <option value="12">12 horas</option>
+	    </select>
+	    <hr style="margin:14px 0;border:none;border-top:1px solid #d0d7de;">
+	    <h4 style="margin-bottom:8px;">Respaldo y sincronización</h4>
+	    <p style="font-size:.9rem;margin-bottom:8px;">Exporta un JSON local o importa un JSON para sincronizarlo con la base de datos cPanel.</p>
+	    <div class="config-sync-actions">
+	      <button id="exportarJsonLocalBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-download"></i> Exportar JSON local</button>
+	      <button id="importarJsonLocalBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-upload"></i> Importar JSON y sincronizar</button>
+	      <input id="importarJsonLocalInput" type="file" accept="application/json,.json" class="oculto" />
+	    </div>
+	    <button id="guardarConfiguracion" class="boton">Guardar</button>
+	  </div>
+	</div>
 
 <!-- AQUI ESTARAN NUESTROS SCRIPT A VINCULAR-->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

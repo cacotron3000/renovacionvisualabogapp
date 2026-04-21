@@ -2263,6 +2263,16 @@ body.dark-mode .historial-lista li {
   display: none;
 }
 
+.config-sync-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.config-sync-actions .mini-boton i {
+  margin-right: 6px;
+}
+
 @media (max-width: 767px) {
   .kpi-strip {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
