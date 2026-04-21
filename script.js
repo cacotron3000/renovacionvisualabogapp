@@ -1631,6 +1631,63 @@ document.addEventListener("DOMContentLoaded", async () => {
     botonCerrar.addEventListener("click", cerrarSesion);
   }
 
+  const botonPresentacion = document.getElementById("iniciarPresentacion");
+  const vistasPresentacion = ["tareas", "audiencias", "internas"];
+  let timerPresentacion = null;
+  let idxPresentacion = 0;
+
+  function actualizarBotonPresentacion(activa) {
+    if (!botonPresentacion) return;
+    botonPresentacion.innerHTML = activa
+      ? "<i class='fa-sharp fa-solid fa-circle-stop'></i><span> Salir presentación</span>"
+      : "<i class='fa-sharp fa-solid fa-display'></i><span> Presentación</span>";
+  }
+
+  function desactivarPresentacion(forzarExitFullscreen = true) {
+    if (timerPresentacion) {
+      clearInterval(timerPresentacion);
+      timerPresentacion = null;
+    }
+    document.body.classList.remove("presentacion-mode");
+    actualizarBotonPresentacion(false);
+    if (forzarExitFullscreen && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  async function activarPresentacion() {
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {
+      mostrarNotificacion("No se pudo activar pantalla completa automáticamente", "#FF9800");
+    }
+    document.body.classList.add("presentacion-mode");
+    idxPresentacion = 0;
+    cambiarVista(vistasPresentacion[idxPresentacion]);
+    timerPresentacion = setInterval(() => {
+      idxPresentacion = (idxPresentacion + 1) % vistasPresentacion.length;
+      cambiarVista(vistasPresentacion[idxPresentacion]);
+    }, 12000);
+    actualizarBotonPresentacion(true);
+  }
+
+  if (botonPresentacion) {
+    botonPresentacion.addEventListener("click", async () => {
+      if (timerPresentacion) {
+        desactivarPresentacion();
+      } else {
+        await activarPresentacion();
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement && timerPresentacion) {
+        desactivarPresentacion(false);
+      }
+    });
+  }
+
   const modalAlerta = document.getElementById("modalAlerta");
   if (modalAlerta) {
     const cerrarAlerta = document.getElementById("modalAlertaCerrar");
