@@ -403,6 +403,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (window.supabaseSync) {
             await supabaseSync.pushRegistro("tareasinternas", nueva);
           }
+          if (window.notificarAsignacionEmail) {
+            window.notificarAsignacionEmail({ ...nueva, tipo: "tarea interna" });
+          }
         }
         form.reset();
         if (selectAsignado) setSelectValue(selectAsignado, []);

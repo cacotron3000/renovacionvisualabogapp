@@ -114,7 +114,7 @@ function cargarTareasDia() {
     });
   });
   document
-    .querySelectorAll("#tareasDiaCantidad, #tareasDiaCantidadDashboard")
+    .querySelectorAll("#tareasNavCantidad, #tareasDiaCantidad, #tareasDiaCantidadDashboard")
     .forEach(cant => (cant.textContent = tareas.length));
   const headerTotal = document.getElementById("totalTareasPendientes");
   if (headerTotal) headerTotal.textContent = tareas.length;
@@ -534,6 +534,9 @@ document.addEventListener("DOMContentLoaded", () => {
               `Tarea diaria creada por ${usuario.nombre}`,
               "dashboard"
             );
+            if (window.notificarAsignacionEmail) {
+              window.notificarAsignacionEmail({ ...nueva, tipo: "tarea diaria" });
+            }
           } else if (window.supabaseSync) {
             mostrarNotificacion(
               "Los datos no se pudieron sincronizar. Intente nuevamente",

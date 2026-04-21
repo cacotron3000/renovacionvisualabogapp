@@ -168,6 +168,453 @@ function nextSequenceValue(PDO $pdo, string $name, int $min = 1): int {
     }
 }
 
+function base64UrlEncode(string $input): string {
+    return rtrim(strtr(base64_encode($input), '+/', '-_'), '=');
+}
+
+function googleServiceAccountToken(array $config, string $scope = 'https://www.googleapis.com/auth/calendar.readonly'): string {
+    $path = $config['google_service_account_json_path'] ?? '';
+    if (!$path || !file_exists($path)) {
+        apiFail('No existe google_service_account_json_path en config.php', 500);
+    }
+    $sa = json_decode((string) file_get_contents($path), true);
+    if (!is_array($sa) || empty($sa['client_email']) || empty($sa['private_key'])) {
+        apiFail('Credenciales de Service Account inválidas.', 500);
+    }
+
+    $now = time();
+    $header = ['alg' => 'RS256', 'typ' => 'JWT'];
+    $claims = [
+        'iss' => $sa['client_email'],
+        'scope' => $scope,
+        'aud' => 'https://oauth2.googleapis.com/token',
+        'exp' => $now + 3600,
+        'iat' => $now,
+    ];
+    $jwtUnsigned = base64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES)) . '.' .
+        base64UrlEncode(json_encode($claims, JSON_UNESCAPED_SLASHES));
+    $signature = '';
+    if (!openssl_sign($jwtUnsigned, $signature, $sa['private_key'], OPENSSL_ALGO_SHA256)) {
+        apiFail('No fue posible firmar JWT de Google.', 500);
+    }
+    $jwt = $jwtUnsigned . '.' . base64UrlEncode($signature);
+
+    $payload = http_build_query([
+        'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        'assertion' => $jwt,
+    ]);
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($resp === false) {
+        apiFail('Error OAuth Google: ' . curl_error($ch), 500);
+    }
+    curl_close($ch);
+    $json = json_decode($resp, true);
+    if ($code >= 400 || empty($json['access_token'])) {
+        apiFail('No se obtuvo access token de Google.', 500);
+    }
+    return (string) $json['access_token'];
+}
+
+function googleApiGet(string $url, string $token): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Accept: application/json'],
+        CURLOPT_TIMEOUT => 25,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($resp === false) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException('Error consultando Google Calendar: ' . $err);
+    }
+    curl_close($ch);
+    $json = json_decode($resp, true);
+    if ($code >= 400) {
+        $message = is_array($json) ? json_encode($json, JSON_UNESCAPED_UNICODE) : ('HTTP ' . $code);
+        throw new RuntimeException('Google Calendar API error: ' . $message, $code);
+    }
+    return is_array($json) ? $json : [];
+}
+
+function googleApiRequest(string $method, string $url, string $token, ?array $body = null): array {
+    $ch = curl_init($url);
+    $headers = ['Authorization: Bearer ' . $token, 'Accept: application/json'];
+    $opts = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => strtoupper($method),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_TIMEOUT => 25,
+    ];
+    if ($body !== null) {
+        $payload = json_encode($body, JSON_UNESCAPED_UNICODE);
+        $headers[] = 'Content-Type: application/json';
+        $opts[CURLOPT_POSTFIELDS] = $payload;
+        $opts[CURLOPT_HTTPHEADER] = $headers;
+    }
+    curl_setopt_array($ch, $opts);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($resp === false) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException('Error consultando Google Calendar: ' . $err);
+    }
+    curl_close($ch);
+    $json = json_decode($resp, true);
+    if ($code >= 400) {
+        $message = is_array($json) ? json_encode($json, JSON_UNESCAPED_UNICODE) : ('HTTP ' . $code);
+        throw new RuntimeException('Google Calendar API error: ' . $message, $code);
+    }
+    return is_array($json) ? $json : [];
+}
+
+function gcalAppId(string $googleEventId): int {
+    $hex = substr(md5('gcal:' . $googleEventId), 0, 12);
+    return (int) base_convert($hex, 16, 10);
+}
+
+function textoNormalizado(string $txt): string {
+    $txt = mb_strtolower(trim($txt), 'UTF-8');
+    $txt = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $txt) ?: $txt;
+    return strtolower($txt);
+}
+
+function gcalMatchesKeywords(array $event, array $keywords): bool {
+    $pool = trim(
+        ($event['summary'] ?? '') . ' ' .
+        ($event['description'] ?? '') . ' ' .
+        ($event['location'] ?? '')
+    );
+    $poolNorm = textoNormalizado($pool);
+    if (!$poolNorm) return false;
+    foreach ($keywords as $kw) {
+        $kwNorm = textoNormalizado((string) $kw);
+        if ($kwNorm !== '' && strpos($poolNorm, $kwNorm) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function gcalEventToAudiencia(array $event): array {
+    $start = $event['start'] ?? [];
+    $startRaw = (string) ($start['dateTime'] ?? $start['date'] ?? '');
+    $dt = null;
+    if ($startRaw !== '') {
+        try { $dt = new DateTime($startRaw); } catch (Throwable $e) { $dt = null; }
+    }
+    $fecha = $dt ? $dt->format('Y-m-d') : date('Y-m-d');
+    $hora = $dt ? $dt->format('H:i') : '09:00';
+    $titulo = trim((string) ($event['summary'] ?? 'Evento de calendario'));
+    $texto = textoNormalizado(
+        $titulo . ' ' . (string) ($event['description'] ?? '') . ' ' . (string) ($event['location'] ?? '')
+    );
+    $tipo = 'audiencia';
+    foreach (['preparatoria', 'monitorio', 'alegato', 'juicio'] as $kw) {
+        if (strpos($texto, $kw) !== false) { $tipo = $kw; break; }
+    }
+    $modalidad = 'presencial';
+    if (strpos($texto, 'presencial') !== false) {
+        $modalidad = 'presencial';
+    } elseif (
+        strpos($texto, 'zoom') !== false ||
+        strpos($texto, 'telematico') !== false ||
+        strpos($texto, 'telematica') !== false
+    ) {
+        $modalidad = 'telematica';
+    }
+    return [
+        'id' => gcalAppId((string) $event['id']),
+        'titulo' => $titulo,
+        'tipo' => $tipo,
+        'modalidad' => $modalidad,
+        'urgencia' => 'media',
+        'fecha' => $fecha,
+        'hora' => $hora,
+        'notas' => trim((string) ($event['description'] ?? '')),
+        'fuente' => 'google_calendar',
+        'googleEventId' => (string) ($event['id'] ?? ''),
+        'googleCalendarId' => (string) ($event['organizer']['email'] ?? ''),
+        'googleHtmlLink' => (string) ($event['htmlLink'] ?? ''),
+    ];
+}
+
+function audienciaToGoogleEvent(array $audiencia, string $timezone): array {
+    $titulo = trim((string) ($audiencia['titulo'] ?? 'Audiencia'));
+    $fecha = trim((string) ($audiencia['fecha'] ?? date('Y-m-d')));
+    $hora = trim((string) ($audiencia['hora'] ?? '09:00'));
+    $inicio = "{$fecha}T{$hora}:00";
+    try {
+        $start = new DateTime($inicio, new DateTimeZone($timezone));
+    } catch (Throwable $e) {
+        $start = new DateTime('now', new DateTimeZone($timezone));
+    }
+    $end = clone $start;
+    $end->modify('+1 hour');
+    $notas = trim((string) ($audiencia['notas'] ?? ''));
+    $description = trim(
+        "Sincronizado desde Abogapp\n" .
+        "Tipo: " . ((string) ($audiencia['tipo'] ?? 'audiencia')) . "\n" .
+        "Modalidad: " . ((string) ($audiencia['modalidad'] ?? 'presencial')) . "\n" .
+        ($notas ? ("Notas: " . $notas) : '')
+    );
+    return [
+        'summary' => $titulo,
+        'description' => $description,
+        'start' => [
+            'dateTime' => $start->format(DateTime::RFC3339),
+            'timeZone' => $timezone,
+        ],
+        'end' => [
+            'dateTime' => $end->format(DateTime::RFC3339),
+            'timeZone' => $timezone,
+        ],
+    ];
+}
+
+function gcalEventStartDateYmd(array $event): ?string {
+    $start = $event['start'] ?? [];
+    $startRaw = (string) ($start['dateTime'] ?? $start['date'] ?? '');
+    if ($startRaw === '') return null;
+    try {
+        $dt = new DateTime($startRaw);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+function getGoogleSyncToken(PDO $pdo, string $calendarId): ?string {
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+    $stmt->execute(['table' => 'google_calendar_meta', 'id' => gcalAppId('meta:' . $calendarId)]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+    $data = json_decode($row['payload'] ?? 'null', true);
+    return is_array($data) ? ($data['syncToken'] ?? null) : null;
+}
+
+function saveGoogleSyncToken(PDO $pdo, string $calendarId, string $syncToken): void {
+    upsertRecords($pdo, 'google_calendar_meta', [[
+        'id' => gcalAppId('meta:' . $calendarId),
+        'calendarId' => $calendarId,
+        'syncToken' => $syncToken,
+        'updatedAt' => date('c'),
+    ]]);
+}
+
+function hashAppId(string $raw): int {
+    $hex = substr(md5($raw), 0, 12);
+    return (int) base_convert($hex, 16, 10);
+}
+
+function normalizarFechaYmd(?string $raw): ?string {
+    $value = trim((string) $raw);
+    if ($value === '') return null;
+    try {
+        $dt = new DateTime($value);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return $value;
+        return null;
+    }
+}
+
+function enviarCorreoSimple(array $config, string $to, string $subject, string $message, bool $isHtml = false): bool {
+    $from = trim((string) ($config['mail_from'] ?? ''));
+    $fromName = trim((string) ($config['mail_from_name'] ?? 'Abogapp'));
+    if ($from === '') return false;
+    $headers = [];
+    $headers[] = 'MIME-Version: 1.0';
+    $headers[] = 'Content-type: ' . ($isHtml ? 'text/html' : 'text/plain') . '; charset=UTF-8';
+    $headers[] = 'From: ' . $fromName . ' <' . $from . '>';
+    return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $message, implode("\r\n", $headers));
+}
+
+function normalizarTelefonoE164(string $raw): ?string {
+    $value = trim($raw);
+    if ($value === '') return null;
+    $clean = preg_replace('/[^\d+]/', '', $value);
+    if (!$clean) return null;
+    if ($clean[0] !== '+') {
+        if (strpos($clean, '56') === 0) $clean = '+' . $clean;
+        else $clean = '+56' . ltrim($clean, '0');
+    }
+    return strlen($clean) >= 10 ? $clean : null;
+}
+
+function enviarWhatsAppSimple(array $config, string $telefonoE164, string $mensaje): bool {
+    $enabled = (bool) ($config['whatsapp_enabled'] ?? false);
+    if (!$enabled) return false;
+    $token = trim((string) ($config['whatsapp_access_token'] ?? ''));
+    $phoneNumberId = trim((string) ($config['whatsapp_phone_number_id'] ?? ''));
+    if ($token === '' || $phoneNumberId === '') return false;
+    $apiVersion = trim((string) ($config['whatsapp_api_version'] ?? 'v20.0'));
+    $url = "https://graph.facebook.com/{$apiVersion}/{$phoneNumberId}/messages";
+    $payload = [
+        'messaging_product' => 'whatsapp',
+        'to' => ltrim($telefonoE164, '+'),
+        'type' => 'text',
+        'text' => ['preview_url' => true, 'body' => $mensaje],
+    ];
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    curl_exec($ch);
+    $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $http >= 200 && $http < 300;
+}
+
+function columnasUsuarios(PDO $pdo): array {
+    static $cols = null;
+    if (is_array($cols)) return $cols;
+    $stmt = $pdo->query("SHOW COLUMNS FROM abogapp_users");
+    $cols = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $field = (string) ($row['Field'] ?? '');
+        if ($field !== '') $cols[$field] = true;
+    }
+    return $cols;
+}
+
+function obtenerMapaUsuarios(PDO $pdo): array {
+    $cols = columnasUsuarios($pdo);
+    $sql = !empty($cols['telefono'])
+        ? 'SELECT email, nombre, telefono FROM abogapp_users WHERE active = 1'
+        : 'SELECT email, nombre FROM abogapp_users WHERE active = 1';
+    $stmt = $pdo->query($sql);
+    $map = [];
+    foreach ($stmt->fetchAll() as $u) {
+        $email = trim((string) ($u['email'] ?? ''));
+        if ($email === '') continue;
+        $nombre = trim((string) ($u['nombre'] ?? ''));
+        if ($nombre !== '') $map[mb_strtolower($nombre, 'UTF-8')] = $email;
+        $map[mb_strtolower($email, 'UTF-8')] = $email;
+    }
+    return $map;
+}
+
+function resolverEmailsAsignados(PDO $pdo, array $asignados): array {
+    $map = obtenerMapaUsuarios($pdo);
+    $emails = [];
+    foreach ($asignados as $a) {
+        $k = mb_strtolower(trim((string) $a), 'UTF-8');
+        if ($k === '') continue;
+        if (isset($map[$k])) $emails[] = $map[$k];
+    }
+    return array_values(array_unique($emails));
+}
+
+function obtenerDestinatariosAsignados(PDO $pdo, array $asignados): array {
+    $cols = columnasUsuarios($pdo);
+    $sql = !empty($cols['telefono'])
+        ? 'SELECT email, nombre, telefono FROM abogapp_users WHERE active = 1'
+        : 'SELECT email, nombre FROM abogapp_users WHERE active = 1';
+    $stmt = $pdo->query($sql);
+    $mapByNombre = [];
+    $mapByEmail = [];
+    foreach ($stmt->fetchAll() as $u) {
+        $email = trim((string) ($u['email'] ?? ''));
+        if ($email === '') continue;
+        $nombre = trim((string) ($u['nombre'] ?? ''));
+        $telefono = normalizarTelefonoE164((string) ($u['telefono'] ?? ''));
+        if ($nombre !== '') $mapByNombre[mb_strtolower($nombre, 'UTF-8')] = ['email' => $email, 'nombre' => $nombre, 'telefono' => $telefono];
+        $mapByEmail[mb_strtolower($email, 'UTF-8')] = ['email' => $email, 'nombre' => ($nombre ?: $email), 'telefono' => $telefono];
+    }
+    $out = [];
+    $seen = [];
+    foreach ($asignados as $a) {
+        $key = mb_strtolower(trim((string) $a), 'UTF-8');
+        if ($key === '') continue;
+        $dest = $mapByNombre[$key] ?? $mapByEmail[$key] ?? null;
+        if (!$dest) continue;
+        if (isset($seen[$dest['email']])) continue;
+        $seen[$dest['email']] = true;
+        $out[] = $dest;
+    }
+    return $out;
+}
+
+function formatearFechaCorreo(?string $raw): string {
+    $ymd = normalizarFechaYmd($raw);
+    if (!$ymd) return 'Sin fecha';
+    $dt = DateTime::createFromFormat('Y-m-d', $ymd);
+    return $dt ? $dt->format('d/m/Y') : $ymd;
+}
+
+function obtenerNombreClientePorId(PDO $pdo, $clienteId): ?string {
+    if ($clienteId === null || $clienteId === '') return null;
+    $id = (int) $clienteId;
+    if ($id <= 0) return null;
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+    $stmt->execute(['table' => 'clientes', 'id' => $id]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+    $data = json_decode($row['payload'] ?? 'null', true);
+    if (!is_array($data)) return null;
+    $nombre = trim((string) ($data['nombre'] ?? $data['razonSocial'] ?? ''));
+    return $nombre !== '' ? $nombre : null;
+}
+
+function obtenerRecordsTabla(PDO $pdo, string $table): array {
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table');
+    $stmt->execute(['table' => $table]);
+    $out = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $data = json_decode($row['payload'] ?? 'null', true);
+        if (is_array($data)) $out[] = $data;
+    }
+    return $out;
+}
+
+function esEstadoTerminado(array $row): bool {
+    $estado = mb_strtolower(trim((string) ($row['estado'] ?? '')), 'UTF-8');
+    if ($estado === '') return false;
+    return strpos($estado, 'termin') !== false || strpos($estado, 'complet') !== false;
+}
+
+function estaArchivadaOEliminada(array $row): bool {
+    if (!empty($row['archivadoEn']) || !empty($row['archivado_at'])) return true;
+    if (!empty($row['eliminado']) || !empty($row['deleted']) || !empty($row['deleted_at'])) return true;
+    return false;
+}
+
+function horaProgramadaRecordatorio(array $config): array {
+    $hour = (int) ($config['task_reminders_hour'] ?? 9);
+    $minute = (int) ($config['task_reminders_minute'] ?? 0);
+    $hour = max(0, min(23, $hour));
+    $minute = max(0, min(59, $minute));
+    return [$hour, $minute];
+}
+
+function validarSecretRecordatorio(array $config, array $payload): void {
+    $expected = trim((string) ($config['task_reminders_cron_secret'] ?? ''));
+    if ($expected === '') return;
+    $provided = trim((string) ($payload['secret'] ?? ''));
+    if ($provided === '' || !hash_equals($expected, $provided)) {
+        apiFail('Secret inválido para ejecutar recordatorios.', 401);
+    }
+}
+
 switch ($action) {
     case 'pull_table': {
         $table = $_GET['table'] ?? '';
@@ -213,6 +660,311 @@ switch ($action) {
         $stmt->execute(['table' => $table, 'app_id' => (int) $appId]);
         logAudit($pdo, 'delete', $table, (int) $appId, null);
         echo json_encode(['ok' => true]);
+        break;
+    }
+
+    case 'sync_google_calendar_audiencias': {
+        $calendarId = trim((string) ($config['google_calendar_id'] ?? ''));
+        if ($calendarId === '') {
+            apiFail('Falta google_calendar_id en config.php', 500);
+        }
+        $keywords = $config['google_keywords'] ?? ['preparatoria', 'monitorio', 'alegato', 'juicio'];
+        if (!is_array($keywords) || !$keywords) {
+            $keywords = ['preparatoria', 'monitorio', 'alegato', 'juicio'];
+        }
+        $token = googleServiceAccountToken($config);
+        $syncToken = getGoogleSyncToken($pdo, $calendarId);
+        $todayYmd = date('Y-m-d');
+
+        $items = [];
+        $nextSyncToken = null;
+        $pageToken = null;
+        $modeIncremental = (bool) $syncToken;
+
+        $fetchLoop = function (?string $syncTok) use (&$items, &$nextSyncToken, &$pageToken, $token, $calendarId) {
+            $items = [];
+            $nextSyncToken = null;
+            $pageToken = null;
+            do {
+                $params = [
+                    'maxResults' => 2500,
+                    'singleEvents' => 'true',
+                    'showDeleted' => 'true',
+                ];
+                if ($pageToken) $params['pageToken'] = $pageToken;
+                if ($syncTok) {
+                    $params['syncToken'] = $syncTok;
+                } else {
+                    $params['orderBy'] = 'startTime';
+                    $params['timeMin'] = (new DateTime('now'))->format(DateTime::ATOM);
+                }
+                $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events?' . http_build_query($params);
+                $resp = googleApiGet($url, $token);
+                $items = array_merge($items, $resp['items'] ?? []);
+                $pageToken = $resp['nextPageToken'] ?? null;
+                $nextSyncToken = $resp['nextSyncToken'] ?? $nextSyncToken;
+            } while ($pageToken);
+        };
+
+        try {
+            $fetchLoop($syncToken);
+        } catch (Throwable $e) {
+            // Si el sync token expiró (410), reintentar full sync.
+            if ($modeIncremental && strpos($e->getMessage(), '"code": 410') !== false) {
+                $syncToken = null;
+                $modeIncremental = false;
+                $fetchLoop(null);
+            } else {
+                apiFail('Error sincronizando Google Calendar: ' . $e->getMessage(), 500);
+            }
+        }
+
+        $toUpsert = [];
+        $deleted = 0;
+        foreach ($items as $ev) {
+            $eventId = (string) ($ev['id'] ?? '');
+            if ($eventId === '') continue;
+            if (($ev['status'] ?? '') === 'cancelled') {
+                $stmt = $pdo->prepare('DELETE FROM abogapp_records WHERE table_name = :table AND app_id = :id');
+                $stmt->execute(['table' => 'audiencias', 'id' => gcalAppId($eventId)]);
+                $deleted += (int) $stmt->rowCount();
+                continue;
+            }
+            $eventDate = gcalEventStartDateYmd($ev);
+            if ($eventDate && $eventDate < $todayYmd) {
+                continue;
+            }
+            if (!gcalMatchesKeywords($ev, $keywords)) continue;
+            $toUpsert[] = gcalEventToAudiencia($ev);
+        }
+
+        $saved = 0;
+        if ($toUpsert) {
+            $result = upsertRecords($pdo, 'audiencias', $toUpsert);
+            $saved = (int) ($result['saved'] ?? 0);
+        }
+        if ($nextSyncToken) {
+            saveGoogleSyncToken($pdo, $calendarId, $nextSyncToken);
+        }
+        echo json_encode([
+            'ok' => true,
+            'synced_events' => count($items),
+            'audiencias_upserted' => $saved,
+            'audiencias_deleted' => $deleted,
+            'mode' => $modeIncremental ? 'incremental' : 'full',
+        ]);
+        break;
+    }
+
+    case 'upsert_google_event_from_audiencia': {
+        $calendarId = trim((string) ($config['google_calendar_id'] ?? ''));
+        if ($calendarId === '') {
+            apiFail('Falta google_calendar_id en config.php', 500);
+        }
+        $audiencia = $payload['audiencia'] ?? null;
+        if (!is_array($audiencia)) {
+            apiFail('Payload de audiencia inválido.', 422);
+        }
+        $eventBody = audienciaToGoogleEvent($audiencia, $config['timezone'] ?? 'America/Santiago');
+        $token = googleServiceAccountToken($config, 'https://www.googleapis.com/auth/calendar');
+        $eventId = trim((string) ($audiencia['googleEventId'] ?? ''));
+        try {
+            if ($eventId !== '') {
+                $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events/' . rawurlencode($eventId);
+                $result = googleApiRequest('PATCH', $url, $token, $eventBody);
+            } else {
+                $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events';
+                $result = googleApiRequest('POST', $url, $token, $eventBody);
+            }
+        } catch (Throwable $e) {
+            if ($eventId !== '' && strpos($e->getMessage(), '"code": 404') !== false) {
+                $url = 'https://www.googleapis.com/calendar/v3/calendars/' . rawurlencode($calendarId) . '/events';
+                $result = googleApiRequest('POST', $url, $token, $eventBody);
+            } else {
+                apiFail('No fue posible sincronizar audiencia con Google Calendar: ' . $e->getMessage(), 500);
+            }
+        }
+        echo json_encode([
+            'ok' => true,
+            'data' => [
+                'googleEventId' => (string) ($result['id'] ?? ''),
+                'appId' => gcalAppId((string) ($result['id'] ?? '')),
+                'googleHtmlLink' => (string) ($result['htmlLink'] ?? ''),
+                'status' => (string) ($result['status'] ?? ''),
+            ],
+        ]);
+        break;
+    }
+
+    case 'send_task_assignment_email': {
+        $task = $payload['task'] ?? null;
+        if (!is_array($task)) apiFail('Payload task inválido.', 422);
+        $taskId = (string) ($task['id'] ?? '');
+        $titulo = trim((string) ($task['titulo'] ?? $task['texto'] ?? 'Tarea'));
+        $vence = formatearFechaCorreo((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
+        $prioridad = trim((string) ($task['prioridad'] ?? 'Sin prioridad'));
+        $clienteNombre = obtenerNombreClientePorId($pdo, $task['clienteId'] ?? null);
+        $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
+        if (!is_array($asignados)) $asignados = [$asignados];
+        $destinatarios = obtenerDestinatariosAsignados($pdo, $asignados);
+        $sent = 0;
+        $waSent = 0;
+        foreach ($destinatarios as $dest) {
+            $email = $dest['email'];
+            $nombre = trim((string) ($dest['nombre'] ?? ''));
+            $telefono = trim((string) ($dest['telefono'] ?? ''));
+            $saludo = $nombre !== '' ? $nombre : $email;
+            $saludoHtml = htmlspecialchars($saludo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $subject = "Nueva tarea asignada: {$titulo}";
+            $body = "<p>Estimado {$saludoHtml}, se te asignó una tarea en Abogapp.</p>"
+                . "<p><strong>Título:</strong> " . htmlspecialchars($titulo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . ($clienteNombre ? "<strong>Cliente:</strong> " . htmlspecialchars($clienteNombre, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>" : "")
+                . "<strong>Vencimiento:</strong> " . htmlspecialchars($vence, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . "<strong>Prioridad:</strong> " . htmlspecialchars($prioridad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . "<strong>ID:</strong> " . htmlspecialchars($taskId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</p>"
+                . "<p>Ingresa a la app para ver el detalle <a href=\"https://abogapp.gjabogados.cl\">aquí</a>.</p>";
+            if (enviarCorreoSimple($config, $email, $subject, $body, true)) {
+                $sent++;
+            }
+            if ($telefono !== '') {
+                $waMsg = "Estimado {$saludo}, se te asignó una tarea en Abogapp.\n"
+                    . "Título: {$titulo}\n"
+                    . ($clienteNombre ? "Cliente: {$clienteNombre}\n" : "")
+                    . "Vencimiento: {$vence}\n"
+                    . "Prioridad: {$prioridad}\n"
+                    . "Ingresa a la app para ver el detalle aquí: https://abogapp.gjabogados.cl";
+                if (enviarWhatsAppSimple($config, $telefono, $waMsg)) {
+                    $waSent++;
+                }
+            }
+        }
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'whatsapp_sent' => $waSent, 'recipients' => count($destinatarios)]]);
+        break;
+    }
+
+    case 'send_task_due_reminders': {
+        validarSecretRecordatorio($config, $payload);
+        $force = (bool) ($payload['force'] ?? false);
+        [$programHour, $programMinute] = horaProgramadaRecordatorio($config);
+        $nowHour = (int) date('G');
+        $nowMinute = (int) date('i');
+        if (!$force && ($nowHour !== $programHour || $nowMinute !== $programMinute)) {
+            echo json_encode([
+                'ok' => true,
+                'data' => [
+                    'sent' => 0,
+                    'skipped' => true,
+                    'reason' => 'outside_scheduled_time',
+                    'scheduled' => sprintf('%02d:%02d', $programHour, $programMinute),
+                    'now' => sprintf('%02d:%02d', $nowHour, $nowMinute),
+                ],
+            ]);
+            break;
+        }
+
+        $today = date('Y-m-d');
+        $tablas = [
+            ['table' => 'diario', 'tipo' => 'tarea diaria', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
+            ['table' => 'tareasinternas', 'tipo' => 'tarea interna', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
+            ['table' => 'tareas', 'tipo' => 'gestión', 'titulo' => 'titulo', 'vence' => 'fin', 'asignados' => 'asignadoA'],
+        ];
+
+        $sent = 0;
+        $digests = [];
+        foreach ($tablas as $cfgTabla) {
+            $rows = obtenerRecordsTabla($pdo, $cfgTabla['table']);
+            foreach ($rows as $row) {
+                if (estaArchivadaOEliminada($row)) continue;
+                if (esEstadoTerminado($row)) continue;
+                $asignados = $row[$cfgTabla['asignados']] ?? [];
+                if (!is_array($asignados)) $asignados = [$asignados];
+                $destinatarios = obtenerDestinatariosAsignados($pdo, $asignados);
+                if (!$destinatarios) continue;
+                $titulo = trim((string) ($row[$cfgTabla['titulo']] ?? 'Tarea'));
+                $taskId = (string) ($row['id'] ?? '');
+                $vence = normalizarFechaYmd((string) ($row[$cfgTabla['vence']] ?? ''));
+                foreach ($destinatarios as $dest) {
+                    $email = trim((string) ($dest['email'] ?? ''));
+                    $telefono = trim((string) ($dest['telefono'] ?? ''));
+                    $key = $email !== '' ? $email : ('wa:' . $telefono);
+                    if ($key === 'wa:' || $key === '') continue;
+                    if (!isset($digests[$key])) {
+                        $digests[$key] = [
+                            'email' => $email,
+                            'telefono' => $telefono,
+                            'nombre' => trim((string) ($dest['nombre'] ?? '')),
+                            'tasks' => [],
+                        ];
+                    }
+                    $digests[$key]['tasks'][] = [
+                        'tabla' => $cfgTabla['table'],
+                        'tipo' => $cfgTabla['tipo'],
+                        'taskId' => $taskId,
+                        'titulo' => $titulo,
+                        'vence' => $vence ?: 'Sin fecha',
+                    ];
+                }
+            }
+        }
+
+        $waSent = 0;
+        foreach ($digests as $destKey => $bundle) {
+            $email = $bundle['email'];
+            $telefono = $bundle['telefono'];
+            $nombre = $bundle['nombre'] ?: ($email ?: $telefono);
+            $tasks = $bundle['tasks'];
+            $digestId = hashAppId("mail-digest|{$destKey}|{$today}");
+            $exists = $pdo->prepare('SELECT 1 FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+            $exists->execute(['table' => 'email_task_reminders', 'id' => $digestId]);
+            if ($exists->fetchColumn()) continue;
+
+            $subject = 'Recordatorio diario 09:00 - Tareas pendientes';
+            $lines = [];
+            $lines[] = "Hola,";
+            $lines[] = "";
+            $lines[] = "Este es tu resumen diario de tareas pendientes en Abogapp ({$today}).";
+            $lines[] = "";
+            foreach ($tasks as $idx => $task) {
+                $n = $idx + 1;
+                $lines[] = "{$n}) [{$task['tipo']}] {$task['titulo']}";
+                $lines[] = "   - ID: {$task['taskId']}";
+                $lines[] = "   - Vence: {$task['vence']}";
+                $lines[] = "";
+            }
+            $lines[] = 'Ingresa a la app para revisar detalle, prioridades y estado.';
+            $body = implode("\n", $lines);
+
+            $sentAny = false;
+            if ($email !== '' && enviarCorreoSimple($config, $email, $subject, $body)) {
+                $sent++;
+                $sentAny = true;
+            }
+            if ($telefono !== '') {
+                $linesWa = [];
+                $linesWa[] = "Estimado {$nombre}, este es tu recordatorio diario de tareas pendientes ({$today}).";
+                foreach ($tasks as $idx => $task) {
+                    $n = $idx + 1;
+                    $linesWa[] = "{$n}) [{$task['tipo']}] {$task['titulo']} | Vence: {$task['vence']}";
+                }
+                $linesWa[] = "Revisa detalle aquí: https://abogapp.gjabogados.cl";
+                if (enviarWhatsAppSimple($config, $telefono, implode("\n", $linesWa))) {
+                    $waSent++;
+                    $sentAny = true;
+                }
+            }
+            if ($sentAny) {
+                upsertRecords($pdo, 'email_task_reminders', [[
+                    'id' => $digestId,
+                    'email' => $email,
+                    'telefono' => $telefono,
+                    'date' => $today,
+                    'items' => count($tasks),
+                    'type' => 'daily_digest',
+                ]]);
+            }
+        }
+
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'whatsapp_sent' => $waSent, 'date' => $today, 'recipients' => count($digests)]]);
         break;
     }
 
