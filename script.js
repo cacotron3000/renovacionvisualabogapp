@@ -17,6 +17,8 @@ const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 horas
 let sessionTimer;
 let sessionStart = parseInt(localStorage.getItem("sessionStart") || Date.now());
 window.sesionExpirada = false;
+let autoSyncGoogleInterval = null;
+let autoSyncGoogleEnCurso = false;
 
 const DEFAULT_CONFIG = {
   radius: "12px",
@@ -224,6 +226,10 @@ async function cargarNotificacionesDesdeSupabase() {
 }
 
 async function cerrarSesion() {
+  if (autoSyncGoogleInterval) {
+    clearInterval(autoSyncGoogleInterval);
+    autoSyncGoogleInterval = null;
+  }
   localStorage.removeItem("usuarioActual");
   localStorage.removeItem("sessionStart");
   if (window.sb && sb.auth) {
@@ -1465,6 +1471,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  async function ejecutarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleEnCurso) return;
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      const cambios = (resp?.audiencias_upserted || 0) + (resp?.audiencias_deleted || 0);
+      if (cambios > 0 && typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+    } catch (error) {
+      console.warn("Auto-sync Google Calendar falló:", error);
+    } finally {
+      autoSyncGoogleEnCurso = false;
+    }
+  }
+
+  function iniciarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleInterval || !window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    ejecutarAutoSyncGoogleCalendar();
+    autoSyncGoogleInterval = setInterval(ejecutarAutoSyncGoogleCalendar, 60 * 1000);
+  }
+
   aplicarConfiguracion();
 
 
@@ -1510,6 +1539,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (typeof actualizarDashboard === "function") {
         actualizarDashboard();
       }
+      iniciarAutoSyncGoogleCalendar();
     }
 
     let usuarioActual = null;
