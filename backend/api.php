@@ -430,13 +430,13 @@ function normalizarFechaYmd(?string $raw): ?string {
     }
 }
 
-function enviarCorreoSimple(array $config, string $to, string $subject, string $message): bool {
+function enviarCorreoSimple(array $config, string $to, string $subject, string $message, bool $isHtml = false): bool {
     $from = trim((string) ($config['mail_from'] ?? ''));
     $fromName = trim((string) ($config['mail_from_name'] ?? 'Abogapp'));
     if ($from === '') return false;
     $headers = [];
     $headers[] = 'MIME-Version: 1.0';
-    $headers[] = 'Content-type: text/plain; charset=UTF-8';
+    $headers[] = 'Content-type: ' . ($isHtml ? 'text/html' : 'text/plain') . '; charset=UTF-8';
     $headers[] = 'From: ' . $fromName . ' <' . $from . '>';
     return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $message, implode("\r\n", $headers));
 }
@@ -463,6 +463,38 @@ function resolverEmailsAsignados(PDO $pdo, array $asignados): array {
         if (isset($map[$k])) $emails[] = $map[$k];
     }
     return array_values(array_unique($emails));
+}
+
+function obtenerDestinatariosAsignados(PDO $pdo, array $asignados): array {
+    $stmt = $pdo->query('SELECT email, nombre FROM abogapp_users WHERE active = 1');
+    $mapByNombre = [];
+    $mapByEmail = [];
+    foreach ($stmt->fetchAll() as $u) {
+        $email = trim((string) ($u['email'] ?? ''));
+        if ($email === '') continue;
+        $nombre = trim((string) ($u['nombre'] ?? ''));
+        if ($nombre !== '') $mapByNombre[mb_strtolower($nombre, 'UTF-8')] = ['email' => $email, 'nombre' => $nombre];
+        $mapByEmail[mb_strtolower($email, 'UTF-8')] = ['email' => $email, 'nombre' => ($nombre ?: $email)];
+    }
+    $out = [];
+    $seen = [];
+    foreach ($asignados as $a) {
+        $key = mb_strtolower(trim((string) $a), 'UTF-8');
+        if ($key === '') continue;
+        $dest = $mapByNombre[$key] ?? $mapByEmail[$key] ?? null;
+        if (!$dest) continue;
+        if (isset($seen[$dest['email']])) continue;
+        $seen[$dest['email']] = true;
+        $out[] = $dest;
+    }
+    return $out;
+}
+
+function formatearFechaCorreo(?string $raw): string {
+    $ymd = normalizarFechaYmd($raw);
+    if (!$ymd) return 'Sin fecha';
+    $dt = DateTime::createFromFormat('Y-m-d', $ymd);
+    return $dt ? $dt->format('d/m/Y') : $ymd;
 }
 
 function obtenerRecordsTabla(PDO $pdo, string $table): array {
@@ -691,20 +723,29 @@ switch ($action) {
         if (!is_array($task)) apiFail('Payload task inválido.', 422);
         $taskId = (string) ($task['id'] ?? '');
         $titulo = trim((string) ($task['titulo'] ?? $task['texto'] ?? 'Tarea'));
-        $vence = trim((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
-        $tipo = trim((string) ($task['tipo'] ?? 'tarea'));
+        $vence = formatearFechaCorreo((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
+        $prioridad = trim((string) ($task['prioridad'] ?? 'Sin prioridad'));
         $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
         if (!is_array($asignados)) $asignados = [$asignados];
-        $emails = resolverEmailsAsignados($pdo, $asignados);
+        $destinatarios = obtenerDestinatariosAsignados($pdo, $asignados);
         $sent = 0;
-        foreach ($emails as $email) {
+        foreach ($destinatarios as $dest) {
+            $email = $dest['email'];
+            $nombre = trim((string) ($dest['nombre'] ?? ''));
+            $saludo = $nombre !== '' ? $nombre : $email;
+            $saludoHtml = htmlspecialchars($saludo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $subject = "Nueva tarea asignada: {$titulo}";
-            $body = "Se te asignó una {$tipo} en Abogapp.\n\nTítulo: {$titulo}\nVencimiento: " . ($vence ?: 'Sin fecha') . "\nID: {$taskId}\n\nIngresa a la app para ver el detalle.";
-            if (enviarCorreoSimple($config, $email, $subject, $body)) {
+            $body = "<p>Estimado {$saludoHtml}, se te asignó una tarea en Abogapp.</p>"
+                . "<p><strong>Título:</strong> " . htmlspecialchars($titulo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . "<strong>Vencimiento:</strong> " . htmlspecialchars($vence, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . "<strong>Prioridad:</strong> " . htmlspecialchars($prioridad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
+                . "<strong>ID:</strong> " . htmlspecialchars($taskId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</p>"
+                . "<p>Ingresa a la app para ver el detalle <a href=\"https://abogapp.gjabogados.cl\">aquí</a>.</p>";
+            if (enviarCorreoSimple($config, $email, $subject, $body, true)) {
                 $sent++;
             }
         }
-        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'recipients' => count($emails)]]);
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'recipients' => count($destinatarios)]]);
         break;
     }
 
