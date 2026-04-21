@@ -1,0 +1,884 @@
+<!-- Indica que este es un documento HTML5 -->
+<!DOCTYPE html>
+
+<!-- La etiqueta <html> define el inicio del documento HTML -->
+<!-- El atributo 'lang="es"' define que el contenido está en español -->
+<html lang="es">
+<head>
+  <!-- Define el conjunto de caracteres utilizado (UTF-8 cubre la mayoría de los caracteres de todos los idiomas) -->
+  <meta charset="UTF-8" />
+
+  <!-- Esta metaetiqueta permite que el diseño sea responsive y se adapte al ancho del dispositivo -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Título que se muestra en la pestaña del navegador -->
+  <title>Abogapp - Gestión de procesos jurídicos</title>
+  <!-- Icono de la aplicación -->
+ <link rel="icon" href="favicon.png" type="image/png" />
+
+
+  <!-- Vincula el archivo CSS con estilos visuales para este documento -->
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="formularios.css" />
+  <link rel="stylesheet" href="tareas.css" />
+  <link rel="stylesheet" href="modales.css" />
+  <link rel="stylesheet" href="lib/choices/choices.min.css" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#4c8b6e" />
+
+<!-- Vincula la fuente Lato y Playfair Display desde Google Fonts para usar en el diseño -->
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- vincula a iconos PRO-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/sharp-solid.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" />
+
+
+
+</head>
+
+<body>
+  <header class="site-header">
+    <img src="logo.png" alt="Logo" class="site-logo">
+    <div class="header-datos">
+      <div class="header-principal-info">
+        <div id="fechaChile" class="fecha-chile"></div>
+        <div id="infoUsuario" class="usuario-info"></div>
+        <div id="syncStatus" class="sync-status" title="Estado de sincronización">● Sincronizando</div>
+        <div class="header-busqueda-global">
+          <span class="search-icon"><i class="fa-sharp fa-solid fa-magnifying-glass"></i></span>
+          <input type="search" id="busquedaGlobalInput" name="global_search" placeholder="Buscar en toda la app..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+          <span class="search-shortcut">/</span>
+          <div id="busquedaGlobalResultados" class="oculto"></div>
+        </div>
+      </div>
+    </div>
+    <div id="notificacionesWrapper" class="notif-wrapper oculto">
+      <button id="btnNotificaciones" class="boton-notificaciones">
+        <i class="fa-sharp fa-solid fa-bell"></i>
+        <span id="contadorNotificaciones" class="contador-notif oculto"></span>
+      </button>
+      <div id="centroNotificaciones" class="notificaciones-dropdown oculto">
+        <div class="notificaciones-header">
+          <span>Notificaciones</span>
+          <button id="limpiarNotificaciones" class="mini-boton">Limpiar</button>
+        </div>
+        <ul id="listaNotificaciones"></ul>
+      </div>
+    </div>
+  </header>
+  <div id="appNotification" class="app-notification oculto"></div>
+  <div id="login" class="oculto login-container">
+    <form id="loginForm" class="login-form">
+      <label>Correo electrónico</label>
+      <input type="email" id="loginUsuario" required>
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" required>
+      <button type="submit" class="boton">Ingresar</button>
+      <div id="loginError" class="login-error"></div>
+    </form>
+  </div>
+  <!-- Contenedor principal de toda la app -->
+  <div id="app" class="oculto">
+    <!-- MENÚ: Navegación principal -->
+    <nav class="sidebar">
+      <button id="toggleSidebar" class="sidebar-toggle"><i class="fa-sharp fa-solid fa-bars"></i></button>
+      <!-- Cada botón representa una vista distinta. Se usarán para mostrar/ocultar secciones -->
+      <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Dashboard</span></button>
+      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Hoy</span></button>
+      <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
+      <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span> Tareas</span><span id="tareasDiaCantidad">0</span></button>
+      <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span> Tareas internas</span></button>
+      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span> Clientes</span></button>
+      <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span> Generador</span></button>
+      <button id="tabUsuarios" data-tab="usuarios" class="tab oculto"><i class="fa-sharp fa-solid fa-users"></i><span> Usuarios</span></button>
+      <button id="toggleTema" class="tab"><i class="fa-sharp fa-solid fa-moon"></i><span> Oscuro</span></button>
+      <button id="abrirConfiguracion" class="tab"><i class="fa-sharp fa-solid fa-gear"></i><span> Configuración</span></button>
+      <button id="cerrarSesion" class="tab"><i class="fa-sharp fa-solid fa-right-from-bracket"></i><span> Cerrar sesión</span></button>
+    </nav>
+
+    <!-- Contenedor principal del contenido -->
+    <main class="contenido">
+      <!-- ========== SECCION 1: Dashboard ==========-->
+      <section id="vista-dashboard" class="vista">
+  <div class="dashboard-row">
+    <div class="dashboard-card ancho-2-4">
+      <h2><i class="fa-sharp fa-solid fa-users"></i> Miembros del equipo</h2>
+      <ul id="equipoLista"></ul>
+    </div>
+
+    <div class="dashboard-card ancho-2-4" id="accionesRapidas">
+      <h2><i class="fa-sharp fa-solid fa-bolt"></i> Acciones rápidas</h2>
+      <button id="nuevaTareaDashboard" class="boton">+ Nueva tarea</button>
+      <button id="nuevoClienteDashboard" class="boton">+ Nuevo Cliente</button>
+      <button id="generarCotizacionDashboard" class="boton">+ Generar Cotización</button>
+      <button id="cotizacionesDashboard" class="boton">Cotizaciones</button>
+      <button id="abrirGeneradorDashboard" class="boton">Generador de escritos</button>
+      </div>
+  </div>
+
+  <div class="dashboard-row">
+    <div class="dashboard-card ancho-2-4">
+      <h2><i class="fa-sharp fa-solid fa-gauge-high"></i> KPI</h2>
+      <div id="kpiResumen"></div>
+    </div>
+    <div class="dashboard-card ancho-2-4">
+      <h2><i class="fa-sharp fa-solid fa-clipboard-list"></i> Tareas (<span id="tareasDiaCantidadDashboard">0</span>)
+        <button id="actualizarPaginaBtnDashboard" class="mini-boton" title="Actualizar"><i class="fa-sharp fa-solid fa-arrows-rotate"></i></button>
+        <button id="nuevaTareaDiaBtnDashboard" class="mini-boton" style="margin-left:auto;"><i class="fa-sharp fa-solid fa-plus"></i> Nueva tarea</button>
+      </h2>
+      <div id="tareasDiaListaDashboard" class="tareas-limitadas"></div>
+      <button id="expandirTareasDiaBtnDashboard" class="mini-boton">Ver más</button>
+    </div>
+  </div>
+
+  <div class="dashboard-card">
+    <h2><i class="fa-sharp fa-solid fa-gavel"></i> Audiencias</h2>
+    <div id="audienciasListaDashboard"></div>
+  </div>
+
+</section>
+
+      <!-- SECCION HOY -->
+      <section id="vista-hoy" class="vista oculto">
+        <div class="dashboard-card">
+          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Bandeja de hoy</h2>
+          <div id="hoyFiltros" class="hoy-filtros">
+            <button class="mini-boton" data-hoy-filtro="todos">Todos</button>
+            <button class="mini-boton" data-hoy-filtro="hoy">Hoy</button>
+            <button class="mini-boton" data-hoy-filtro="vencidas">Vencidas</button>
+            <button class="mini-boton" data-hoy-filtro="semana">Semana</button>
+            <select id="hoyResponsableFiltro" class="mini-boton">
+              <option value="">Responsable: todos</option>
+            </select>
+            <button id="hoyExportSemanal" class="mini-boton">Exportar semanal</button>
+          </div>
+          <div id="hoyResumenCarga"></div>
+          <div id="hoyCalendarioSemanal"></div>
+          <div id="hoyKanban"></div>
+          <div id="hoyAuditoria"></div>
+          <div id="hoyLista"></div>
+        </div>
+      </section>
+
+      <!-- Panel lateral rápido -->
+      <aside id="quickPanel" class="oculto">
+        <div class="quick-panel-header">
+          <strong id="quickPanelTitulo">Detalle</strong>
+          <button id="quickPanelCerrar" class="mini-boton">Cerrar</button>
+        </div>
+        <div id="quickPanelContenido"></div>
+      </aside>
+
+      <!-- SECCION TAREAS -->
+      <section id="vista-tareas" class="vista oculto">
+        <div class="dashboard-card">
+          <h2><i class="fa-sharp fa-solid fa-clipboard-list"></i> Tareas (<span id="tareasDiaCantidad">0</span>)
+            <button id="actualizarPaginaBtn" class="mini-boton" title="Actualizar"><i class="fa-sharp fa-solid fa-arrows-rotate"></i></button>
+            <button id="nuevaTareaDiaBtn" class="mini-boton" style="margin-left:auto;"><i class="fa-sharp fa-solid fa-plus"></i> Nueva tarea</button>
+          </h2>
+          <div id="tareasDiaLista"></div>
+        </div>
+
+        <button id="toggleTareasDiaArchivadas" class="boton">Mostrar tareas completadas</button>
+        <div id="tareasDiaArchivadas" class="oculto"></div>
+      </section>
+
+      <!-- ===== SECCION 5: Utilidades ===== -->
+
+
+      <!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === -->
+<section id="vista-clientes" class="vista oculto">
+  <div class="section-header">
+    <h1><i class="fa-sharp fa-solid fa-user"></i> Clientes <span id="clientesTotal"></span></h1>
+    <button id="abrirFormulario" class="boton">+ Nuevo Cliente</button>
+  </div>
+  <input type="text" id="buscarClientes" placeholder="Buscar clientes..." />
+
+<!-- Contenedor para la lista de clientes -->
+
+<div id="clientesLista"></div>
+<div id="clientesPaginacion" class="paginacion"></div>
+
+    <!-- Aquí se insertarán los clientes con JS -->
+  </section>
+
+      
+      <!-- SECCION GENERADOR -->
+      <section id="vista-generador" class="vista oculto">
+        <div class="section-header">
+          <h1><i class="fa-sharp fa-solid fa-file-signature"></i> Generador de escritos</h1>
+        </div>
+        <div class="dashboard-card generador-card">
+          <div class="generador-native-wrap">
+            <div id="generadorMount" class="generador-native-mount"></div>
+          </div>
+        </div>
+      </section>
+
+<!-- SECCION TAREAS INTERNAS -->
+      <section id="vista-internas" class="vista oculto">
+        <div class="section-header">
+          <h1><i class="fa-sharp fa-solid fa-clipboard-list"></i> Tareas internas (<span id="tareasInternasCantidad">0</span>)</h1>
+          <button id="nuevaTareaInternaBtn" class="mini-boton" style="margin-left:auto;"><i class="fa-sharp fa-solid fa-plus"></i> Nueva tarea</button>
+        </div>
+        <div class="dashboard-card">
+          <div id="tareasInternasLista"></div>
+          <button id="toggleTareasInternasArchivadas" class="boton"><i class="fa-sharp fa-solid fa-box-archive"></i> Tareas archivadas</button>
+          <div id="tareasInternasArchivadas" class="oculto"></div>
+        </div>
+      </section>
+
+      <!-- SECCION AUDIENCIAS -->
+      <section id="vista-audiencias" class="vista oculto">
+        <div class="section-header">
+          <h1><i class="fa-sharp fa-solid fa-gavel"></i> Audiencias</h1>
+          <button id="nuevaAudienciaBtn" class="boton">+ Nueva audiencia</button>
+        </div>
+        <div class="dashboard-card">
+          <div id="audienciasLista"></div>
+          <button id="toggleAudienciasArchivadas" class="boton">Mostrar audiencias archivadas</button>
+          <div id="audienciasArchivadas" class="oculto"></div>
+        </div>
+      </section>
+
+        <!-- SECCION DE USUARIOS -->
+        <section id="vista-usuarios" class="vista oculto">
+          <div class="section-header">
+            <h1><i class="fa-sharp fa-solid fa-users"></i> Usuarios</h1>
+            <button id="nuevoUsuarioBtn" class="boton">+ Nuevo Usuario</button>
+          </div>
+          <div id="usuariosLista"></div>
+        </section>
+
+
+
+    </main>
+  </div>
+
+
+
+<!-- == MODALES == --><!-- == MODALES == --><!-- == MODALES == -->
+  <!-- Modal para el formulario de expediente -->
+<div id="modalFormularioExpediente" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalCerrarExpediente" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-folder-plus"></i> Agregar un Caso</h3></br>
+    <form id="expedienteForm">
+
+    <!-- Campo: Cliente asociado (se selecciona de los clientes ya creados) -->
+    <label for="exp-cliente">Cliente asociado *</label>
+    <select id="exp-cliente" required>
+      <option value="">Selecciona un cliente</option>
+      <!-- Las opciones serán cargadas dinámicamente con JS -->
+    </select>
+
+    <!-- Campo: Título del expediente -->
+    <label for="exp-titulo">Título del caso *</label>
+    <input type="text" id="exp-titulo" required />
+
+    <!-- Campo: Tribunal-->
+      <!-- Campo: Tribunal asociado -->
+    <label for="exp-tribunal">Tribunal</label>
+    <select id="exp-tribunal" required>
+    <option value="">Selecciona un Tribunal</option>
+
+    <optgroup label="No judicial">
+      <option value="Estudio Jurídico La Serena">Estudio Jurídico La Serena</option>
+      <option value="Consultoría Extrajudicial">Consultoría Extrajudicial</option>
+      <option value="Otros (No Judicial)">Otros (No Judicial)</option>
+    </optgroup>
+    
+   <optgroup label="Copiapó">
+      <option value="Tribunal de Juicio Oral en lo Penal de Copiapó">Tribunal de Juicio Oral en lo Penal de La Serena</option>
+      <option value="1° Juzgado de Letras de Copiapó">1° Juzgado de Letras de Copiapó</option>
+      <option value="2° Juzgado de Letras de Copiapó">2° Juzgado de Letras de Copiapó</option>
+      <option value="3° Juzgado de Letras de Copiapó">3° Juzgado de Letras de Copiapó</option>
+      <option value="4° Juzgado de Letras de Copiapó">4° Juzgado de Letras de Copiapó</option>
+      <option value="Juzgado de Familia de Copiapó">Juzgado de Familia de Copiapó</option>
+      <option value="Juzgado de Letras del Trabajo de Copiapó">Juzgado de Letras del Trabajo de Copiapó</option>
+      <option value="Juzgado de Garantía de Copiapó">Juzgado de Garantía de Copiapó</option>
+    </optgroup>
+      
+       <optgroup label="Caldera">
+      <option value="Juzgado de Letras y Garantía de Caldera">Juzgado de Letras y Garantía de Caldera"</option>
+    </optgroup>
+    
+    <optgroup label="La Serena">
+      <option value="Tribunal de Juicio Oral en lo Penal de La Serena">Tribunal de Juicio Oral en lo Penal de La Serena</option>
+      <option value="1° Juzgado de Letras de La Serena">1° Juzgado de Letras de La Serena</option>
+      <option value="2° Juzgado de Letras de La Serena">2° Juzgado de Letras de La Serena</option>
+      <option value="3° Juzgado de Letras de La Serena">3° Juzgado de Letras de La Serena</option>
+      <option value="Juzgado de Familia de La Serena">Juzgado de Familia de La Serena</option>
+      <option value="Juzgado de Letras del Trabajo de La Serena">Juzgado de Letras del Trabajo de La Serena</option>
+      <option value="Juzgado de Garantía de La Serena">Juzgado de Garantía de La Serena</option>
+    </optgroup>
+
+    <optgroup label="Coquimbo">
+      <option value="1° Juzgado de Letras de Coquimbo">1° Juzgado de Letras de Coquimbo</option>
+      <option value="2° Juzgado de Letras de Coquimbo">2° Juzgado de Letras de Coquimbo</option>
+      <option value="3° Juzgado de Letras de Coquimbo">3° Juzgado de Letras de Coquimbo</option>
+      <option value="Juzgado de Familia de Coquimbo">Juzgado de Familia de Coquimbo</option>
+      <option value="Juzgado de Garantía de Coquimbo">Juzgado de Garantía de Coquimbo</option>
+    </optgroup>
+
+    <optgroup label="Ovalle">
+      <option value="Tribunal de Juicio Oral en lo Penal de Ovalle">Tribunal de Juicio Oral en lo Penal de Ovalle</option>
+      <option value="1° Juzgado de Letras de Ovalle">1° Juzgado de Letras de Ovalle</option>
+      <option value="2° Juzgado de Letras de Ovalle">2° Juzgado de Letras de Ovalle</option>
+      <option value="3° Juzgado de Letras de Ovalle">3° Juzgado de Letras de Ovalle</option>
+      <option value="Juzgado de Familia de Ovalle">Juzgado de Familia de Ovalle</option>
+      <option value="Juzgado de Garantía de Ovalle">Juzgado de Garantía de Ovalle</option>
+    </optgroup>
+
+    <optgroup label="Otros Tribunales Región de Coquimbo">
+      <option value="Juzgado de Letras y Garantía de Andacollo">Juzgado de Letras y Garantía de Andacollo</option>
+      <option value="Juzgado de Letras de Vicuña">Juzgado de Letras de Vicuña</option>
+      <option value="Juzgado de Garantía de Vicuña">Juzgado de Garantía de Vicuña</option>
+      <option value="Juzgado de Letras y Garantía de Combarbalá">Juzgado de Letras y Garantía de Combarbalá</option>
+      <option value="Juzgado de Letras de Illapel">Juzgado de Letras de Illapel</option>
+      <option value="Juzgado de Garantía de Illapel">Juzgado de Garantía de Illapel</option>
+      <option value="Juzgado de Letras y Garantía de Los Vilos">Juzgado de Letras y Garantía de Los Vilos</option>
+    </optgroup>
+
+<optgroup label="Santiago">
+  <option value="1° Juzgado Civil de Santiago">1° Juzgado Civil de Santiago</option>
+  <option value="2° Juzgado Civil de Santiago">2° Juzgado Civil de Santiago</option>
+  <option value="3° Juzgado Civil de Santiago">3° Juzgado Civil de Santiago</option>
+  <option value="4° Juzgado Civil de Santiago">4° Juzgado Civil de Santiago</option>
+  <option value="5° Juzgado Civil de Santiago">5° Juzgado Civil de Santiago</option>
+  <option value="6° Juzgado Civil de Santiago">6° Juzgado Civil de Santiago</option>
+  <option value="7° Juzgado Civil de Santiago">7° Juzgado Civil de Santiago</option>
+  <option value="8° Juzgado Civil de Santiago">8° Juzgado Civil de Santiago</option>
+  <option value="9° Juzgado Civil de Santiago">9° Juzgado Civil de Santiago</option>
+  <option value="10° Juzgado Civil de Santiago">10° Juzgado Civil de Santiago</option>
+  <option value="11° Juzgado Civil de Santiago">11° Juzgado Civil de Santiago</option>
+  <option value="12° Juzgado Civil de Santiago">12° Juzgado Civil de Santiago</option>
+  <option value="13° Juzgado Civil de Santiago">13° Juzgado Civil de Santiago</option>
+  <option value="14° Juzgado Civil de Santiago">14° Juzgado Civil de Santiago</option>
+  <option value="15° Juzgado Civil de Santiago">15° Juzgado Civil de Santiago</option>
+  <option value="16° Juzgado Civil de Santiago">16° Juzgado Civil de Santiago</option>
+  <option value="17° Juzgado Civil de Santiago">17° Juzgado Civil de Santiago</option>
+  <option value="18° Juzgado Civil de Santiago">18° Juzgado Civil de Santiago</option>
+  <option value="19° Juzgado Civil de Santiago">19° Juzgado Civil de Santiago</option>
+  <option value="20° Juzgado Civil de Santiago">20° Juzgado Civil de Santiago</option>
+  <option value="21° Juzgado Civil de Santiago">21° Juzgado Civil de Santiago</option>
+  <option value="22° Juzgado Civil de Santiago">22° Juzgado Civil de Santiago</option>
+  <option value="23° Juzgado Civil de Santiago">23° Juzgado Civil de Santiago</option>
+  <option value="24° Juzgado Civil de Santiago">24° Juzgado Civil de Santiago</option>
+  <option value="25° Juzgado Civil de Santiago">25° Juzgado Civil de Santiago</option>
+  <option value="26° Juzgado Civil de Santiago">26° Juzgado Civil de Santiago</option>
+  <option value="27° Juzgado Civil de Santiago">27° Juzgado Civil de Santiago</option>
+  <option value="28° Juzgado Civil de Santiago">28° Juzgado Civil de Santiago</option>
+  <option value="29° Juzgado Civil de Santiago">29° Juzgado Civil de Santiago</option>
+  <option value="30° Juzgado Civil de Santiago">30° Juzgado Civil de Santiago</option>
+</optgroup>
+
+ <optgroup label="Cortes de Apelaciones">
+   <option value="Corte de Apelaciones de Arica">Corte de Apelaciones de Arica</option>
+   <option value="Corte de Apelaciones de Iquique">Corte de Apelaciones de Iquique</option>
+   <option value="Corte de Apelaciones de Antofagasta">Corte de Apelaciones de Antofagasta</option>
+   <option value="Corte de Apelaciones de Copiapó">Corte de Apelaciones de Copiapó</option>
+   <option value="Corte de Apelaciones de La Serena">Corte de Apelaciones de La Serena</option>
+   <option value="Corte de Apelaciones de Valparaíso">Corte de Apelaciones de Valparaíso</option>
+   <option value="Corte de Apelaciones de Santiago">Corte de Apelaciones de Santiago</option>
+   <option value="Corte de Apelaciones de San Miguel">Corte de Apelaciones de San Miguel</option>
+   <option value="Corte de Apelaciones de Rancagua">Corte de Apelaciones de Rancagua</option>
+   <option value="Corte de Apelaciones de Talca">Corte de Apelaciones de Talca</option>
+   <option value="Corte de Apelaciones de Chillán">Corte de Apelaciones de Chillán</option>
+   <option value="Corte de Apelaciones de Concepción">Corte de Apelaciones de Concepción</option>
+   <option value="Corte de Apelaciones de Temuco">Corte de Apelaciones de Temuco</option>
+   <option value="Corte de Apelaciones de Valdivia">Corte de Apelaciones de Valdivia</option>
+   <option value="Corte de Apelaciones de Puerto Montt">Corte de Apelaciones de Puerto Montt</option>
+   <option value="Corte de Apelaciones de Coyhaique">Corte de Apelaciones de Coyhaique</option>
+   <option value="Corte de Apelaciones de Punta Arenas">Corte de Apelaciones de Punta Arenas</option>
+ </optgroup>
+ 
+ <optgroup label="Cortes Suprema">
+   <option value="Corte Suprema">Corte Suprema</option>
+
+    </select>
+
+    <!-- ... (otros tribunales iguales al fragmento que ya tienes) ... -->
+  </select>
+
+      <!-- Campo: Rol o número de causa -->
+      <label for="exp-rol">Rol o número de causa</label>
+      <input type="text" id="exp-rol" />
+
+      <!-- Campo: Materia (lista desplegable) -->
+      <label for="exp-materia">Materia *</label>
+      <select id="exp-materia" required>
+        <option value="">Selecciona una materia</option>
+        <option value="Civil">Civil</option>
+        <option value="Familia">Familia</option>
+        <option value="Laboral">Laboral</option>
+        <option value="Laboral-cobranza">Laboral-cobranza</option>
+        <option value="Laboral-tutela">Laboral-tutela</option>
+        <option value="Comercial">Comercial</option>
+        <option value="Policía Local">Policía Local</option>
+        <option value="Penal">Penal</option>
+        <option value="Administrativo">Administrativo</option>
+        <option value="Tributario">Tributario</option>
+        <option value="Aguas">Aguas</option>
+        <option value="Minero">Minero</option>
+        <option value="Recurso de protección">Recurso de protección</option>
+        <option value="Recurso de amparo">Recurso de amparo</option>
+        <option value="Otros">Otros</option>
+      </select>
+
+      <!-- Campo: Estado de propuesta -->
+      <label for="exp-propuesta">Estado de la propuesta *</label>
+      <select id="exp-propuesta" required>
+        <option value="">Selecciona estado</option>
+        <option value="Pendiente">Pendiente</option>
+        <option value="Aceptada">Aceptada</option>
+        <option value="Rechazada">Rechazada</option>
+      </select>
+
+      <!-- Campo: Valor del honorario -->
+      <div class="campo-doble">
+        <div>
+          <label for="exp-honorarios">Valor del honorario</label>
+          <input type="number" id="exp-honorarios" placeholder="Ej: 150000" />
+        </div>
+        <div>
+          <label for="exp-variable">Variable</label>
+          <select id="exp-variable">
+            <option value="">Sin variable</option>
+            <option value="10">10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+            <option value="25">25%</option>
+            <option value="30">30%</option>
+            <option value="35">35%</option>
+            <option value="40">40%</option>
+            <option value="45">45%</option>
+            <option value="50">50%</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Campo: Estado de trámite -->
+      <label for="exp-tramite">Estado del trámite *</label>
+      <select id="exp-tramite" required>
+        <option value="">Selecciona estado</option>
+        <option value="No iniciado">No iniciado</option>
+        <option value="En proceso">En proceso</option>
+        <option value="Terminado exitosamente">Terminado exitosamente</option>
+        <option value="Término fallido">Término fallido</option>
+        <option value="Impugnado">Impugnado</option>
+      </select>
+
+      <label for="exp-responsable">Abogado responsable</label>
+      <input type="text" id="exp-responsable" placeholder="Nombre responsable" />
+
+      <label for="exp-etapa-procesal">Etapa procesal</label>
+      <input type="text" id="exp-etapa-procesal" placeholder="Ej: demanda, prueba, sentencia" />
+
+      <label for="exp-fecha-control">Próximo control semanal</label>
+      <input type="date" id="exp-fecha-control" />
+
+      <label for="exp-proxima-accion">Próxima acción *</label>
+      <input type="text" id="exp-proxima-accion" required placeholder="Acción concreta siguiente" />
+
+
+      <!-- Botón para guardar -->
+      <button type="submit" class="boton">Guardar Caso</button>
+    </form>
+  </div>
+</div>
+<!-- Modal para agregar o editar tarea -->
+<div id="ModalFormularioTarea" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="ModalFormularioTareaCerrar" class="modal-cerrar">&times;</span>
+
+    <!-- FORMULARIO de tareas dentro del modal -->
+      <h3><i class="fa-sharp fa-solid fa-clipboard-list"></i> Agregar una Gestión</h3></br>
+    <form id="tareaForm">
+    <input type="text" id="tarea-titulo" placeholder="Título de la gestión" required>
+    <textarea id="tarea-descripcion" placeholder="Descripción"></textarea>
+    <input type="text" id="tarea-proxima-accion" placeholder="Próxima acción (obligatoria)" required>
+
+    <select id="tarea-expediente" required>
+      <option value="">Seleccionar caso</option>
+    </select>
+
+    <input type="date" id="tarea-inicio" required>
+    <input type="date" id="tarea-fin" required>
+
+    <label for="tarea-estado">Estado de la gestión</label>
+    <select id="tarea-estado">
+      <option value="No iniciado">No iniciado</option>
+      <option value="En proceso">En proceso</option>
+      <option value="Terminado">Terminado</option>
+    </select>
+    <label for="tarea-prioridad">Prioridad</label>
+    <select id="tarea-prioridad">
+      <option value="Normal">Normal</option>
+      <option value="Prioritaria">Prioritaria</option>
+      <option value="Urgente">Urgente</option>
+    </select>
+
+ <!-- Botón para guardar -->
+    <button type="submit" class="boton">Guardar Gestión</button>
+  </form>
+  </div>
+</div>
+  <!-- Modal para el formulario de cliente -->
+<div id="modalFormulario" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalCerrar" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-user-plus"></i> Agregar un Cliente</h3></br>
+    <form id="clienteForm">
+      <label for="nombre">Nombre:</label>
+      <input type="text" id="nombre" required />
+
+      <label for="correo">Correo:</label>
+      <input type="email" id="correo" required />
+
+      <label for="telefono">Teléfono:</label>
+      <input type="tel" id="telefono" required />
+
+      <label for="direccion">Dirección:</label>
+      <input type="text" id="direccion" />
+
+      <label for="rut">RUT:</label>
+      <input type="text" id="rut" />
+
+      <label for="confidencial">Notas:</label>
+      <textarea id="confidencial"></textarea>
+
+      <label for="link">Carpeta:</label>
+      <input type="url" id="link" />
+
+      <div id="cotizacionesWrapper">
+        <label>Cotizaciones:</label>
+        <div id="cotizacionesLista"></div>
+        <button type="button" id="agregarCotizacion" class="mini-boton">
+          <i class="fa-sharp fa-solid fa-plus"></i> Agregar cotización
+        </button>
+      </div>
+
+      <button type="submit" class="boton">Guardar Cliente</button>
+    </form>
+  </div>
+</div>
+      <!-- === MODAL DE DETALLES DE CLIENTE === -->
+<div id="modalCliente" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalClienteCerrar" class="modal-cerrar">×</span>
+    <button id="modalClienteEditar" class="boton-editar">✏️ Editar</button>
+    <h2><i class="fa-sharp fa-solid fa-address-card"></i> Ficha del Cliente</h2>
+    <div id="modalTexto" class="modal-texto detalle-grid"></div>
+    <div id="comentariosCliente" class="comentarios-cliente full-span">
+      <h3>Comentarios</h3>
+      <ul id="listaComentariosCliente" class="lista-comentarios"></ul>
+      <textarea id="nuevoComentarioCliente" rows="3"></textarea>
+      <button type="button" id="btnAgregarComentarioCliente" class="mini-boton">Agregar comentario</button>
+    </div>
+  </div>
+</div>
+
+<!-- === MODAL DE DETALLES DE EXPEDIENTE === -->
+<div id="modalExpediente" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalExpCerrar" class="modal-cerrar">×</span>
+    <button id="modalExpedienteEditar" class="boton-editar">✏️ Editar</button>
+    <h2><i class="fa-sharp fa-solid fa-folder"></i> Detalles del Caso</h2>
+    <div id="modalExpTexto" class="modal-texto detalle-grid"></div>
+    <div id="comentariosCaso" class="comentarios-cliente full-span">
+      <h3>Comentarios</h3>
+      <ul id="listaComentariosCaso" class="lista-comentarios"></ul>
+      <textarea id="nuevoComentarioCaso" rows="3"></textarea>
+      <button type="button" id="btnAgregarComentarioCaso" class="mini-boton">Agregar comentario</button>
+    </div>
+  </div>
+</div>
+
+<!-- === MODAL DE DETALLES DE TAREA===  -->
+<div id="modalTarea" class="modal oculto">
+ <div class="modal-contenido">
+    <span id="modalTareaCerrar" class="modal-cerrar">×</span>
+    <button id="modalTareaEditar" class="boton-editar">✏️ Editar</button>
+    <h2><i class="fa-sharp fa-solid fa-list-check"></i> Detalles de la Gestión</h2>
+    <div id="modalTareaTexto" class="modal-texto detalle-grid"></div>
+    <div id="comentariosGestion" class="comentarios-cliente full-span">
+      <h3>Comentarios</h3>
+      <ul id="listaComentariosGestion" class="lista-comentarios"></ul>
+      <textarea id="nuevoComentarioGestion" rows="3"></textarea>
+      <button type="button" id="btnAgregarComentarioGestion" class="mini-boton">Agregar comentario</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para tareas -->
+<div id="modalTareaDia" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalTareaDia" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-calendar-plus"></i> Agregar tarea</h3>
+    <form id="tareaDiaForm">
+      <input type="text" id="tareaDiaTexto" placeholder="Título de la tarea" required>
+      <select id="tareaDiaAsignadoA" multiple placeholder="Asignar a..."></select>
+      <select id="tareaDiaCliente">
+        <option value="">Cliente (opcional)</option>
+      </select>
+      <select id="tareaDiaPrioridad">
+        <option value="">Prioridad (opcional)</option>
+        <option value="alta">Alta</option>
+        <option value="media">Media</option>
+        <option value="baja">Baja</option>
+      </select>
+      <label for="tareaDiaFechaFin">Fecha prevista de término</label>
+      <input type="date" id="tareaDiaFechaFin" placeholder="Fecha de término (opcional)">
+      <label for="tareaDiaProximaAccion">Próxima acción *</label>
+      <input type="text" id="tareaDiaProximaAccion" required placeholder="Siguiente paso concreto">
+      <button type="submit" class="boton">Guardar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal de detalle de tarea -->
+<div id="modalDetalleTareaDia" class="modal oculto">
+  <div class="modal-contenido">
+    <button id="editarTareaDia" class="boton-editar">✏️ Editar</button>
+    <span id="cerrarModalDetalleTareaDia" class="modal-cerrar">×</span>
+    <h3 id="detalleTareaTitulo"></h3>
+    <p id="detalleTareaAsignado"></p>
+    <p id="detalleTareaFecha"></p>
+    <p id="detalleTareaVence"></p>
+    <div id="comentariosTareaDia" class="comentarios-cliente">
+      <h3>💬 Comentarios</h3>
+      <ul id="listaComentariosTarea" class="lista-comentarios"></ul>
+      <textarea id="nuevoComentarioTarea" rows="3"></textarea>
+      <button type="button" id="agregarComentarioTarea" class="mini-boton">Agregar comentario</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para tareas internas -->
+<div id="modalTareaInterna" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalTareaInterna" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-clipboard-list"></i> Agregar tarea interna</h3>
+    <form id="tareaInternaForm">
+      <input type="text" id="tareaInternaTexto" placeholder="Título de la tarea" required>
+      <select id="tareaInternaAsignadoA" multiple placeholder="Asignar a..."></select>
+      <select id="tareaInternaCliente">
+        <option value="">Cliente (opcional)</option>
+      </select>
+      <select id="tareaInternaPrioridad">
+        <option value="">Prioridad (opcional)</option>
+        <option value="alta">Alta</option>
+        <option value="media">Media</option>
+        <option value="baja">Baja</option>
+      </select>
+      <label for="tareaInternaFechaFin">Fecha prevista de término</label>
+      <input type="date" id="tareaInternaFechaFin" placeholder="Fecha de término (opcional)">
+      <label for="tareaInternaProximaAccion">Próxima acción *</label>
+      <input type="text" id="tareaInternaProximaAccion" required placeholder="Siguiente paso concreto">
+      <button type="submit" class="boton">Guardar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal de detalle de tarea interna -->
+<div id="modalDetalleTareaInterna" class="modal oculto">
+  <div class="modal-contenido">
+    <button id="editarTareaInterna" class="boton-editar">✏️ Editar</button>
+    <span id="cerrarModalDetalleTareaInterna" class="modal-cerrar">×</span>
+    <h3 id="detalleTareaInternaTitulo"></h3>
+    <p id="detalleTareaInternaAsignado"></p>
+    <p id="detalleTareaInternaFecha"></p>
+    <p id="detalleTareaInternaVence"></p>
+    <div class="comentarios-cliente">
+      <h3>💬 Comentarios</h3>
+      <ul id="listaComentariosTareaInterna" class="lista-comentarios"></ul>
+    <textarea id="nuevoComentarioTareaInterna" rows="3"></textarea>
+    <button type="button" id="agregarComentarioTareaInterna" class="mini-boton">Agregar comentario</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para agregar audiencia -->
+<div id="modalAudiencia" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalAudiencia" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-gavel"></i> Nueva audiencia</h3>
+    <form id="audienciaForm">
+      <input type="text" id="audienciaTitulo" placeholder="Título" required>
+      <select id="audienciaTipo" required>
+        <option value="">Tipo de audiencia</option>
+        <option value="juicio">Juicio</option>
+        <option value="preparatoria">Preparatoria</option>
+        <option value="unica">Única</option>
+        <option value="alegato">Alegato</option>
+      </select>
+      <select id="audienciaModalidad">
+        <option value="presencial">Presencial</option>
+        <option value="online">Online</option>
+      </select>
+      <select id="audienciaUrgencia">
+        <option value="media">Urgencia media</option>
+        <option value="alta">Urgencia alta</option>
+        <option value="baja">Urgencia baja</option>
+      </select>
+      <label for="audienciaFecha">Fecha de audiencia</label>
+      <input type="date" id="audienciaFecha" required>
+      <label for="audienciaHora">Hora de audiencia</label>
+      <input type="time" id="audienciaHora" required>
+      <textarea id="audienciaNotas" placeholder="Notas"></textarea>
+      <button type="submit" class="boton">Guardar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal para audiencias próximas -->
+<div id="modalAudienciasProximas" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalAudienciasProximas" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-calendar-day"></i> Audiencias próximas</h3>
+    <div id="listaAudienciasProximas"></div>
+  </div>
+</div>
+
+<!-- Modal detalle de audiencia -->
+<div id="modalDetalleAudiencia" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalDetalleAudiencia" class="modal-cerrar">×</span>
+    <h3 id="detalleAudienciaTitulo"></h3>
+    <p id="detalleAudienciaTipo"></p>
+    <p id="detalleAudienciaModalidad"></p>
+    <p id="detalleAudienciaFechaHora"></p>
+    <p id="detalleAudienciaNotas"></p>
+    <button id="editarAudienciaBtn" class="mini-boton">Editar</button>
+  </div>
+</div>
+
+<!-- Modal para generar cotización -->
+<div id="modalCotizacion" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalCotizacion" class="modal-cerrar">×</span>
+    <h3>Generar Cotización</h3>
+    <form id="propuestaForm">
+        <label>Nombre cliente:</label>
+        <input type="text" name="nombre" required>
+        <label>Mail:</label>
+        <input type="email" name="mail" required>
+        <label>Materia:</label>
+        <input type="text" name="materia">
+        <label>Fecha:</label>
+        <input type="date" name="fecha">
+        <label>Servicio requerido:</label>
+        <textarea name="servicio"></textarea>
+        <label>Propuesta de servicio:</label>
+        <textarea name="propuesta"></textarea>
+
+        <h3>Cotización</h3>
+        <table>
+            <tr><th>Concepto</th><th>Fijo</th><th>Variable</th></tr>
+            <tbody id="cotizacionRows"></tbody>
+        </table>
+        <button type="button" id="agregarFilaCotizacion" class="mini-boton">+ Agregar fila</button>
+
+        <button type="submit" class="boton" id="btnGenerarDocx">Generar .docx</button>
+        <div id="docxLoader" class="docx-loader oculto"></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal de alerta genérico -->
+<div id="modalAlerta" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalAlertaCerrar" class="modal-cerrar">×</span>
+    <p id="modalAlertaMensaje"></p>
+    <a id="modalAlertaDrive" class="boton oculto" target="_blank" href="https://drive.google.com/drive/folders/1FBctJ8BlyM6twOBn_xRw8R_mW8xsqBPj">Ir a Drive</a>
+  </div>
+</div>
+
+<!-- Modal para crear o editar usuario -->
+<div id="modalUsuario" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="modalUsuarioCerrar" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-user-gear"></i> Usuario</h3>
+    <form id="usuarioForm">
+      <label for="usuario-email">Correo electrónico</label>
+      <input type="email" id="usuario-email" required>
+      <label for="usuario-nombre">Nombre para mostrar</label>
+      <input type="text" id="usuario-nombre" required>
+      <label for="usuario-pass">Clave de acceso</label>
+      <input type="password" id="usuario-pass">
+      <button type="submit" class="boton">Guardar Usuario</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal de configuración -->
+<div id="modalConfiguracion" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarModalConfiguracion" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-gear"></i> Configuración</h3>
+    <label for="configRadio">Forma de botones y tarjetas</label>
+    <select id="configRadio">
+      <option value="0">Rectos</option>
+      <option value="8px">Menos curvos</option>
+      <option value="12px" selected>Curvos</option>
+    </select>
+    <label for="configTema">Esquema de colores</label>
+    <select id="configTema">
+      <option value="original" selected>Original</option>
+      <option value="azul">Azul</option>
+      <option value="rojo">Rojo</option>
+      <option value="amarillo">Amarillo</option>
+      <option value="celeste">Celeste</option>
+      <option value="naranja">Naranja</option>
+      <option value="rosado">Rosado</option>
+      <option value="gris">Gris</option>
+    </select>
+    <label for="configFuente">Tamaño de letra</label>
+    <select id="configFuente">
+      <option value="16px" selected>Pequeño</option>
+      <option value="18px">Normal</option>
+      <option value="20px">Grande</option>
+    </select>
+    <label for="configFormatoFecha">Formato de fecha</label>
+    <select id="configFormatoFecha">
+      <option value="DMY">DD/MM/AAAA</option>
+      <option value="YMD">AAAA-MM-DD</option>
+    </select>
+    <label for="configFormatoHora">Formato de hora</label>
+    <select id="configFormatoHora">
+      <option value="24">24 horas</option>
+      <option value="12">12 horas</option>
+    </select>
+    <button id="guardarConfiguracion" class="boton">Guardar</button>
+  </div>
+</div>
+
+<!-- AQUI ESTARAN NUESTROS SCRIPT A VINCULAR-->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="lib/choices/choices.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script src="cpanel.config.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="script.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="lib/docxtemplater/pizzip.min.js"></script>
+<script src="cotizacion.js"></script>
+<script src="componentes/audiencias.js"></script>
+<script src="componentes/clientes.js"></script>
+<script src="componentes/tareas_internas.js"></script>
+<script src="componentes/dashboard.js"></script>
+<script src="componentes/usuarios.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js');
+    });
+  }
+</script>
+
+</body></html>

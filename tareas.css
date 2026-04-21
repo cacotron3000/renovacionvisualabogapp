@@ -1,0 +1,294 @@
+/* === AbogApp Beta - Hoja de Estilos Tareas === */
+/* Estilo responsivo con paleta basada en Gorroño-Jara */
+/* Pensado para uso mobile-first y accesibilidad clara */
+/* === Formulario Base === */
+/* colores de urgencia */
+.tarea-urgente {
+  border-left: 10px solid red;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.tarea-prioritaria {
+  border-left: 10px solid orange;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+.tarea-normal {
+  border-left: 10px solid #00a203;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+/* Etiqueta de prioridad junto al título */
+.prioridad-label {
+  display: inline-block;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radius);
+  color: #fff;
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+}
+
+.prioridad-urgente {
+  background-color: red;
+}
+
+.prioridad-prioritaria {
+  background-color: orange;
+}
+
+.prioridad-normal {
+  background-color: #00a203;
+}
+
+/* === Botón pequeño para acciones secundarias === */
+.mini-boton {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--color-secundario);
+  border: none;
+  color: white;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.mini-boton:hover {
+  background-color: var(--color-principal);
+}
+
+/* Botones específicos para tareas del día */
+.tarea-dia-check {
+  background-color: #5cb85c;
+}
+
+.tarea-dia-check:hover {
+  background-color: #4cae4c;
+}
+
+.tarea-dia-delete {
+  background-color: #d9534f;
+}
+
+.tarea-dia-delete:hover {
+  background-color: #c9302c;
+}
+
+/* === Estilo actualizado para .tarea-card === */
+.tarea-card {
+  border-radius: var(--radius);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  line-height: 1.4; /* Reduce el interlineado en el contenido de la tarjeta */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start; /* Alinea los elementos al inicio */
+  position: relative; /* Necesario para el posicionamiento absoluto de los botones */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+
+.tarea-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Título de la tarjeta */
+.tarea-card h3 {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--color-texto);
+  margin-bottom: 0.25rem;
+  line-height: 1; /* Reduce el interlineado en el título */
+}
+
+/* Estilo del botón eliminar */
+.boton-eliminar {
+  background-color: #d9534f;
+  color: white;
+  margin-left: auto; /* Mueve el botón a la derecha */
+  border: none;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  cursor: pointer;
+  position: absolute; /* Hace que el botón se posicione en la parte superior derecha */
+  top: 10px; /* Alinea un poco hacia abajo */
+  right: 10px; /* Alinea al lado derecho */
+}
+
+.boton-eliminar:hover {
+  background-color: #c9302c;
+}
+
+body.dark-mode .tarea-card {
+  background-color: var(--color-secundario);
+  color: var(--color-texto);
+  backdrop-filter: blur(10px);
+}
+
+/* Fondos de prioridad solo en modo claro */
+body:not(.dark-mode) .tarea-card.tarea-urgente {
+  background-color: #ffcccc;
+}
+body:not(.dark-mode) .tarea-card.tarea-prioritaria {
+  background-color: #ffecaf;
+}
+body:not(.dark-mode) .tarea-card.tarea-normal {
+  background-color: #99fab8;
+}
+
+/* === Tarjetas para las tareas del día en el dashboard === */
+.tarea-dia-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  border-left: 10px solid transparent;
+}
+
+.tarea-dia-baja {
+  border-left-color: #28a745;
+}
+
+.tarea-dia-media {
+  border-left-color: #ffc107;
+}
+
+.tarea-dia-alta {
+  border-left-color: #dc3545;
+}
+
+/* Fondos para tareas del día solo en modo claro */
+body:not(.dark-mode) .tarea-dia-card.tarea-dia-baja {
+  background: #d4edda;
+}
+body:not(.dark-mode) .tarea-dia-card.tarea-dia-media {
+  background: #fff3cd;
+}
+body:not(.dark-mode) .tarea-dia-card.tarea-dia-alta {
+  background: #f8d7da;
+}
+
+/* Mini tarjeta para listas embebidas en modales */
+.tarea-mini-card {
+  background: var(--color-destacado);
+  border-left: 4px solid var(--color-acento);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+body.dark-mode .tarea-mini-card {
+  background: var(--color-secundario);
+}
+
+body.dark-mode .tarea-dia-card {
+  background: var(--color-secundario);
+  backdrop-filter: blur(10px);
+}
+
+/* Tareas internas en tarjeta blanca (consistente con módulo de tareas). */
+body:not(.dark-mode) #tareasInternasLista .tarea-dia-card,
+body:not(.dark-mode) #tareasInternasArchivadas .tarea-dia-card {
+  background: #ffffff;
+  border: 1px solid #dde3ea;
+}
+body:not(.dark-mode) #tareasInternasLista .tarea-dia-card.tarea-dia-baja,
+body:not(.dark-mode) #tareasInternasLista .tarea-dia-card.tarea-dia-media,
+body:not(.dark-mode) #tareasInternasLista .tarea-dia-card.tarea-dia-alta,
+body:not(.dark-mode) #tareasInternasArchivadas .tarea-dia-card.tarea-dia-baja,
+body:not(.dark-mode) #tareasInternasArchivadas .tarea-dia-card.tarea-dia-media,
+body:not(.dark-mode) #tareasInternasArchivadas .tarea-dia-card.tarea-dia-alta {
+  background: #ffffff;
+}
+
+.tarea-dia-textos {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tarea-dia-acciones {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.tarea-dia-texto {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.tarea-dia-asignado {
+  font-size: 0.8rem;
+  color: var(--color-gris);
+}
+
+.tarea-dia-fecha {
+  font-size: 0.8rem;
+  color: var(--color-gris);
+}
+
+.tarea-dia-plazo {
+  font-size: 0.8rem;
+  color: var(--color-gris);
+}
+
+.tarea-dia-plazo.urgente {
+  color: red;
+  font-weight: bold;
+}
+
+.tarea-dia-texto.expandida {
+  white-space: normal;
+  overflow: visible;
+}
+
+/* Lista de tareas del día con altura limitada para igualar tarjetas */
+#tareasDiaLista.tareas-limitadas,
+#tareasDiaListaDashboard.tareas-limitadas,
+#misTareasLista.tareas-limitadas,
+#misTareasListaDashboard.tareas-limitadas {
+  max-height: 200px;
+  overflow-y: auto;
+}
+#tareasDiaLista.expandido,
+#tareasDiaListaDashboard.expandido,
+#misTareasLista.expandido,
+#misTareasListaDashboard.expandido {
+  max-height: none;
+}
+
+/* Ajustes de botones en tarjetas para vista móvil */
+@media (max-width: 600px) {
+  .tarea-card .boton-eliminar,
+  .tarea-card .boton-archivar {
+    position: static;
+    margin-top: 0.25rem;
+    display: block;
+  }
+}
