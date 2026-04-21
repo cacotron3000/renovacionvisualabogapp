@@ -1190,9 +1190,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const comandos = [
-    { label: "Ir a Command Center", vista: "dashboard" },
-    { label: "Abrir Inbox operativa", vista: "hoy" },
-    { label: "Abrir Casos y audiencias", vista: "audiencias" },
+    { label: "Ir a Dashboard", vista: "dashboard" },
+    { label: "Abrir Hoy", vista: "hoy" },
+    { label: "Abrir Audiencias", vista: "audiencias" },
     { label: "Abrir Tareas", vista: "tareas" },
     { label: "Abrir Clientes", vista: "clientes" },
     { label: "Abrir Documentos", vista: "generador" },

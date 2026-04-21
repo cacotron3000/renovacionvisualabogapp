@@ -86,11 +86,11 @@
       <div class="sidebar-group-label">Workspace</div>
       <button id="toggleSidebar" class="sidebar-toggle"><i class="fa-sharp fa-solid fa-bars"></i></button>
       <!-- Cada botón representa una vista distinta. Se usarán para mostrar/ocultar secciones -->
-      <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Command Center</span></button>
-      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Inbox operativa</span></button>
-      <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Casos y audiencias</span><span id="audienciasCantidad">0</span></button>
+      <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Dashboard</span></button>
+      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Hoy</span></button>
+      <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
       <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
-      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes (CRM)</span></button>
+      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
       <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
       <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
       <div class="sidebar-group-label">Administración</div>
@@ -155,7 +155,7 @@
       <!-- SECCION HOY -->
       <section id="vista-hoy" class="vista oculto">
         <div class="dashboard-card">
-          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Work Queue</h2>
+          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Bandeja de hoy</h2>
           <div id="hoyFiltros" class="hoy-filtros">
             <button class="mini-boton" data-hoy-filtro="todos">Todos</button>
             <button class="mini-boton" data-hoy-filtro="hoy">Hoy</button>
@@ -203,7 +203,7 @@
       <!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === --><!-- === SECCIÓN 1: CLIENTES === -->
 <section id="vista-clientes" class="vista oculto">
   <div class="section-header">
-    <h1><i class="fa-sharp fa-solid fa-user"></i> Clientes (CRM legal) <span id="clientesTotal"></span></h1>
+    <h1><i class="fa-sharp fa-solid fa-user"></i> Clientes <span id="clientesTotal"></span></h1>
     <button id="abrirFormulario" class="boton">+ Nuevo Cliente</button>
   </div>
   <input type="text" id="buscarClientes" placeholder="Buscar clientes..." />
@@ -278,7 +278,7 @@
   </div>
   <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
     <button class="tab" data-tab="hoy"><i class="fa-sharp fa-solid fa-calendar-day"></i><span>Hoy</span></button>
-    <button class="tab" data-tab="audiencias"><i class="fa-sharp fa-solid fa-gavel"></i><span>Casos</span></button>
+    <button class="tab" data-tab="audiencias"><i class="fa-sharp fa-solid fa-gavel"></i><span>Audiencias</span></button>
     <button class="tab" data-tab="clientes"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
     <button class="tab" data-tab="dashboard"><i class="fa-sharp fa-solid fa-table-columns"></i><span>Más</span></button>
   </nav>
