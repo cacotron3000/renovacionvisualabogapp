@@ -418,6 +418,18 @@ function hashAppId(string $raw): int {
     return (int) base_convert($hex, 16, 10);
 }
 
+function normalizarFechaYmd(?string $raw): ?string {
+    $value = trim((string) $raw);
+    if ($value === '') return null;
+    try {
+        $dt = new DateTime($value);
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return $value;
+        return null;
+    }
+}
+
 function enviarCorreoSimple(array $config, string $to, string $subject, string $message): bool {
     $from = trim((string) ($config['mail_from'] ?? ''));
     $fromName = trim((string) ($config['mail_from_name'] ?? 'Abogapp'));
@@ -462,6 +474,35 @@ function obtenerRecordsTabla(PDO $pdo, string $table): array {
         if (is_array($data)) $out[] = $data;
     }
     return $out;
+}
+
+function esEstadoTerminado(array $row): bool {
+    $estado = mb_strtolower(trim((string) ($row['estado'] ?? '')), 'UTF-8');
+    if ($estado === '') return false;
+    return strpos($estado, 'termin') !== false || strpos($estado, 'complet') !== false;
+}
+
+function estaArchivadaOEliminada(array $row): bool {
+    if (!empty($row['archivadoEn']) || !empty($row['archivado_at'])) return true;
+    if (!empty($row['eliminado']) || !empty($row['deleted']) || !empty($row['deleted_at'])) return true;
+    return false;
+}
+
+function horaProgramadaRecordatorio(array $config): array {
+    $hour = (int) ($config['task_reminders_hour'] ?? 9);
+    $minute = (int) ($config['task_reminders_minute'] ?? 0);
+    $hour = max(0, min(23, $hour));
+    $minute = max(0, min(59, $minute));
+    return [$hour, $minute];
+}
+
+function validarSecretRecordatorio(array $config, array $payload): void {
+    $expected = trim((string) ($config['task_reminders_cron_secret'] ?? ''));
+    if ($expected === '') return;
+    $provided = trim((string) ($payload['secret'] ?? ''));
+    if ($provided === '' || !hash_equals($expected, $provided)) {
+        apiFail('Secret inválido para ejecutar recordatorios.', 401);
+    }
 }
 
 switch ($action) {
@@ -668,44 +709,93 @@ switch ($action) {
     }
 
     case 'send_task_due_reminders': {
+        validarSecretRecordatorio($config, $payload);
+        $force = (bool) ($payload['force'] ?? false);
+        [$programHour, $programMinute] = horaProgramadaRecordatorio($config);
+        $nowHour = (int) date('G');
+        $nowMinute = (int) date('i');
+        if (!$force && ($nowHour !== $programHour || $nowMinute !== $programMinute)) {
+            echo json_encode([
+                'ok' => true,
+                'data' => [
+                    'sent' => 0,
+                    'skipped' => true,
+                    'reason' => 'outside_scheduled_time',
+                    'scheduled' => sprintf('%02d:%02d', $programHour, $programMinute),
+                    'now' => sprintf('%02d:%02d', $nowHour, $nowMinute),
+                ],
+            ]);
+            break;
+        }
+
         $today = date('Y-m-d');
         $tablas = [
             ['table' => 'diario', 'tipo' => 'tarea diaria', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
             ['table' => 'tareasinternas', 'tipo' => 'tarea interna', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
             ['table' => 'tareas', 'tipo' => 'gestión', 'titulo' => 'titulo', 'vence' => 'fin', 'asignados' => 'asignadoA'],
         ];
+
         $sent = 0;
+        $digests = [];
         foreach ($tablas as $cfgTabla) {
             $rows = obtenerRecordsTabla($pdo, $cfgTabla['table']);
             foreach ($rows as $row) {
-                $vence = trim((string) ($row[$cfgTabla['vence']] ?? ''));
-                if ($vence === '' || $vence < $today) continue;
+                if (estaArchivadaOEliminada($row)) continue;
+                if (esEstadoTerminado($row)) continue;
                 $asignados = $row[$cfgTabla['asignados']] ?? [];
                 if (!is_array($asignados)) $asignados = [$asignados];
                 $emails = resolverEmailsAsignados($pdo, $asignados);
+                if (!$emails) continue;
                 $titulo = trim((string) ($row[$cfgTabla['titulo']] ?? 'Tarea'));
                 $taskId = (string) ($row['id'] ?? '');
+                $vence = normalizarFechaYmd((string) ($row[$cfgTabla['vence']] ?? ''));
                 foreach ($emails as $email) {
-                    $reminderId = hashAppId("mail-reminder|{$cfgTabla['table']}|{$taskId}|{$email}|{$today}");
-                    $exists = $pdo->prepare('SELECT 1 FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
-                    $exists->execute(['table' => 'email_task_reminders', 'id' => $reminderId]);
-                    if ($exists->fetchColumn()) continue;
-                    $subject = "Recordatorio diario: {$titulo}";
-                    $body = "Recordatorio de {$cfgTabla['tipo']} asignada.\n\nTítulo: {$titulo}\nVence: {$vence}\nID: {$taskId}\n\nEste aviso se enviará diariamente hasta la fecha de vencimiento.";
-                    if (enviarCorreoSimple($config, $email, $subject, $body)) {
-                        $sent++;
-                    }
-                    upsertRecords($pdo, 'email_task_reminders', [[
-                        'id' => $reminderId,
+                    $digests[$email][] = [
                         'tabla' => $cfgTabla['table'],
+                        'tipo' => $cfgTabla['tipo'],
                         'taskId' => $taskId,
-                        'email' => $email,
-                        'date' => $today,
-                    ]]);
+                        'titulo' => $titulo,
+                        'vence' => $vence ?: 'Sin fecha',
+                    ];
                 }
             }
         }
-        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'date' => $today]]);
+
+        foreach ($digests as $email => $tasks) {
+            $digestId = hashAppId("mail-digest|{$email}|{$today}");
+            $exists = $pdo->prepare('SELECT 1 FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+            $exists->execute(['table' => 'email_task_reminders', 'id' => $digestId]);
+            if ($exists->fetchColumn()) continue;
+
+            $subject = 'Recordatorio diario 09:00 - Tareas pendientes';
+            $lines = [];
+            $lines[] = "Hola,";
+            $lines[] = "";
+            $lines[] = "Este es tu resumen diario de tareas pendientes en Abogapp ({$today}).";
+            $lines[] = "";
+            foreach ($tasks as $idx => $task) {
+                $n = $idx + 1;
+                $lines[] = "{$n}) [{$task['tipo']}] {$task['titulo']}";
+                $lines[] = "   - ID: {$task['taskId']}";
+                $lines[] = "   - Vence: {$task['vence']}";
+                $lines[] = "";
+            }
+            $lines[] = 'Ingresa a la app para revisar detalle, prioridades y estado.';
+            $body = implode("\n", $lines);
+
+            if (enviarCorreoSimple($config, $email, $subject, $body)) {
+                $sent++;
+                upsertRecords($pdo, 'email_task_reminders', [[
+                    'id' => $digestId,
+                    'email' => $email,
+                    'date' => $today,
+                    'items' => count($tasks),
+                    'type' => 'daily_digest',
+                ]]);
+            }
+        }
+
+        echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'date' => $today, 'recipients' => count($digests)]]);
         break;
     }
 

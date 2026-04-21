@@ -12,4 +12,7 @@ return [
     'google_sync_days_back' => 90,
     'mail_from' => 'no-reply@tu-dominio.cl',
     'mail_from_name' => 'Abogapp',
+    'task_reminders_hour' => 9,
+    'task_reminders_minute' => 0,
+    'task_reminders_cron_secret' => 'REEMPLAZAR_SECRET_CRON',
 ];
