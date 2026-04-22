@@ -9,6 +9,10 @@
 // Objetivo: Oculta todas las secciones (.vista) y muestra solo la seleccionada.
 // Nivel de relevancia: 🔥 Crítico. Es el corazón de la navegación entre módulos.
 let vistaActual = localStorage.getItem("ultimaVista") || "dashboard";
+if (vistaActual === "generador") {
+  vistaActual = "dashboard";
+  localStorage.setItem("ultimaVista", "dashboard");
+}
 
 // ------------------------------
 // ⏳ Manejo de expiración de sesión
@@ -949,7 +953,17 @@ function setSelectValue(select, value) {
   }
 }
 
+const GENERADOR_EXTERNO_URL = "https://gjabogados.cl/generador";
+
+function abrirGeneradorExterno() {
+  window.open(GENERADOR_EXTERNO_URL, "_blank", "noopener,noreferrer");
+}
+
 function cambiarVista(vistaId) {
+  if (vistaId === "generador") {
+    abrirGeneradorExterno();
+    return;
+  }
   const vistaMostrada = document.getElementById(`vista-${vistaId}`);
   if (!vistaMostrada) {
     vistaId = "dashboard";
@@ -972,8 +986,6 @@ function cambiarVista(vistaId) {
     cargarAudiencias();
   } else if (vistaId === "hoy") {
     renderVistaHoy();
-  } else if (vistaId === "generador") {
-    montarGeneradorNativo();
   }
 
   // 2) Ocultamos todas las secciones
@@ -1670,6 +1682,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // que indica qué vista debe mostrarse cuando se hace clic.
     tab.addEventListener("click", () => {
       const vistaSeleccionada = tab.getAttribute("data-tab"); // extrae "dashboard", "clientes", etc.
+        if (vistaSeleccionada === "generador") {
+          abrirGeneradorExterno();
+          return;
+        }
         localStorage.setItem("ultimaVista", vistaSeleccionada);
         cambiarVista(vistaSeleccionada);
     });
@@ -1681,8 +1697,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const abrirGeneradorDashboard = document.getElementById("abrirGeneradorDashboard");
   if (abrirGeneradorDashboard) {
     abrirGeneradorDashboard.addEventListener("click", () => {
-      localStorage.setItem("ultimaVista", "generador");
-      cambiarVista("generador");
+      abrirGeneradorExterno();
     });
   }
 
