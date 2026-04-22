@@ -575,6 +575,29 @@ function obtenerNombreClientePorId(PDO $pdo, $clienteId): ?string {
     return $nombre !== '' ? $nombre : null;
 }
 
+function obtenerClienteAsociadoTarea(PDO $pdo, array $row): ?string {
+    if (!empty($row['clienteId'])) {
+        $nombre = obtenerNombreClientePorId($pdo, $row['clienteId']);
+        if ($nombre) return $nombre;
+    }
+    if (!empty($row['expedienteId'])) {
+        $expId = (int) $row['expedienteId'];
+        if ($expId > 0) {
+            $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+            $stmt->execute(['table' => 'expedientes', 'id' => $expId]);
+            $exp = $stmt->fetch();
+            if ($exp) {
+                $expData = json_decode($exp['payload'] ?? 'null', true);
+                if (is_array($expData) && !empty($expData['clienteId'])) {
+                    $nombre = obtenerNombreClientePorId($pdo, $expData['clienteId']);
+                    if ($nombre) return $nombre;
+                }
+            }
+        }
+    }
+    return null;
+}
+
 function obtenerRecordsTabla(PDO $pdo, string $table): array {
     $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table');
     $stmt->execute(['table' => $table]);
@@ -882,7 +905,8 @@ switch ($action) {
                 if (!$destinatarios) continue;
                 $titulo = trim((string) ($row[$cfgTabla['titulo']] ?? 'Tarea'));
                 $taskId = (string) ($row['id'] ?? '');
-                $vence = normalizarFechaYmd((string) ($row[$cfgTabla['vence']] ?? ''));
+                $vence = formatearFechaCorreo((string) ($row[$cfgTabla['vence']] ?? ''));
+                $cliente = obtenerClienteAsociadoTarea($pdo, $row);
                 foreach ($destinatarios as $dest) {
                     $email = trim((string) ($dest['email'] ?? ''));
                     $telefono = trim((string) ($dest['telefono'] ?? ''));
@@ -899,12 +923,13 @@ switch ($action) {
                     $digests[$key]['tasks'][] = [
                         'tabla' => $cfgTabla['table'],
                         'tipo' => $cfgTabla['tipo'],
-                        'taskId' => $taskId,
-                        'titulo' => $titulo,
-                        'vence' => $vence ?: 'Sin fecha',
-                    ];
+                            'taskId' => $taskId,
+                            'titulo' => $titulo,
+                            'vence' => $vence ?: 'Sin fecha',
+                            'cliente' => $cliente ?: 'Sin cliente',
+                        ];
+                    }
                 }
-            }
         }
 
         $waSent = 0;
@@ -929,6 +954,7 @@ switch ($action) {
                 $lines[] = "{$n}) [{$task['tipo']}] {$task['titulo']}";
                 $lines[] = "   - ID: {$task['taskId']}";
                 $lines[] = "   - Vence: {$task['vence']}";
+                $lines[] = "   - Cliente: {$task['cliente']}";
                 $lines[] = "";
             }
             $lines[] = 'Ingresa a la app para revisar detalle, prioridades y estado.';
@@ -944,7 +970,7 @@ switch ($action) {
                 $linesWa[] = "Estimado {$nombre}, este es tu recordatorio diario de tareas pendientes ({$today}).";
                 foreach ($tasks as $idx => $task) {
                     $n = $idx + 1;
-                    $linesWa[] = "{$n}) [{$task['tipo']}] {$task['titulo']} | Vence: {$task['vence']}";
+                    $linesWa[] = "{$n}) [{$task['tipo']}] {$task['titulo']} | Vence: {$task['vence']} | Cliente: {$task['cliente']}";
                 }
                 $linesWa[] = "Revisa detalle aquí: https://abogapp.gjabogados.cl";
                 if (enviarWhatsAppSimple($config, $telefono, implode("\n", $linesWa))) {
