@@ -453,6 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnEditarDetalle = document.getElementById("editarTareaDia");
   document.querySelectorAll("#nuevaTareaDiaBtn, #nuevaTareaDiaBtnDashboard").forEach(btnNueva => {
     btnNueva.addEventListener("click", () => {
+      poblarSelectClienteTareaDia(selectCliente);
       modal.dataset.editing = "";
       const titulo = modal.querySelector("h3");
       if (titulo) titulo.textContent = "Agregar tarea";
@@ -638,15 +639,7 @@ document.addEventListener("DOMContentLoaded", () => {
     enhanceSelect(selectPrioridad);
   }
   if (selectCliente) {
-    const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
-    selectCliente.innerHTML = '<option value="">Cliente (opcional)</option>';
-    clientes.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.nombre;
-      selectCliente.appendChild(opt);
-    });
-    if (typeof enhanceSelect === "function") enhanceSelect(selectCliente);
+    poblarSelectClienteTareaDia(selectCliente);
   }
 
 
@@ -665,6 +658,7 @@ function abrirEdicionTareaDia(id){
   const selectCliente = document.getElementById("tareaDiaCliente");
   const inputFechaFin=document.getElementById("tareaDiaFechaFin");
   const inputProximaAccion = document.getElementById("tareaDiaProximaAccion");
+  poblarSelectClienteTareaDia(selectCliente);
   if(texto) texto.value=t.texto;
   if(selectAsignado) setSelectValue(selectAsignado, t.asignadosA || []);
   if(selectPrioridad) setSelectValue(selectPrioridad, t.prioridad || "");
@@ -676,4 +670,22 @@ function abrirEdicionTareaDia(id){
   if(titulo) titulo.textContent="Editar tarea";
   if(modalDetalle) modalDetalle.classList.add("oculto");
   modal.classList.remove("oculto");
+}
+
+function poblarSelectClienteTareaDia(selectCliente){
+  if (!selectCliente) return;
+  const valorActual = selectCliente.value;
+  const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+  selectCliente.innerHTML = '<option value="">Cliente (opcional)</option>';
+  clientes
+    .slice()
+    .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"))
+    .forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.nombre;
+      selectCliente.appendChild(opt);
+    });
+  if (typeof enhanceSelect === "function") enhanceSelect(selectCliente);
+  if (valorActual) setSelectValue(selectCliente, valorActual);
 }

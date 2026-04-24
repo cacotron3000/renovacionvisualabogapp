@@ -307,6 +307,7 @@ function abrirEdicionTareaInterna(id) {
   const selectPrioridad = document.getElementById("tareaInternaPrioridad");
   const inputFechaFin = document.getElementById("tareaInternaFechaFin");
   const inputProximaAccion = document.getElementById("tareaInternaProximaAccion");
+  poblarSelectClienteTareaInterna(selectCliente);
   if (texto) texto.value = t.texto;
   if (selectAsignado) setSelectValue(selectAsignado, t.asignadosA || []);
   if (selectCliente) setSelectValue(selectCliente, t.clienteId || "");
@@ -318,6 +319,24 @@ function abrirEdicionTareaInterna(id) {
   if (titulo) titulo.textContent = "Editar tarea interna";
   if (modalDetalle) modalDetalle.classList.add("oculto");
   modal.classList.remove("oculto");
+}
+
+function poblarSelectClienteTareaInterna(selectCliente) {
+  if (!selectCliente) return;
+  const valorActual = selectCliente.value;
+  const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+  selectCliente.innerHTML = '<option value="">Cliente (opcional)</option>';
+  clientes
+    .slice()
+    .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"))
+    .forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.nombre;
+      selectCliente.appendChild(opt);
+    });
+  if (typeof enhanceSelect === "function") enhanceSelect(selectCliente);
+  if (valorActual) setSelectValue(selectCliente, valorActual);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -338,6 +357,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnNueva) {
     btnNueva.addEventListener("click", () => {
+      poblarSelectClienteTareaInterna(selectCliente);
       modal.dataset.editing = "";
       const titulo = modal.querySelector("h3");
       if (titulo) titulo.textContent = "Agregar tarea interna";
@@ -460,15 +480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     enhanceSelect(selectPrioridad);
   }
   if (selectCliente) {
-    const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
-    selectCliente.innerHTML = '<option value="">Cliente (opcional)</option>';
-    clientes.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.nombre;
-      selectCliente.appendChild(opt);
-    });
-    if (typeof enhanceSelect === "function") enhanceSelect(selectCliente);
+    poblarSelectClienteTareaInterna(selectCliente);
   }
   cargarTareasInternas();
   cargarTareasInternasArchivadas();
