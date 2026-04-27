@@ -74,3 +74,46 @@ UPDATE abogapp_users SET telefono = '+56987654321' WHERE email = 'abogado2@domin
 
 3. Recomendación de formato:
    - usar formato internacional E.164 (ej: `+569XXXXXXXX` para Chile).
+
+## 7) Preferencias de recordatorio por usuario (hora y canal)
+
+Puedes configurar preferencias por usuario en `abogapp_records` con `table_name = user_notification_prefs`.
+
+Payload ejemplo:
+
+```json
+{
+  "id": 1,
+  "email": "abogado1@dominio.cl",
+  "reminderHour": 8,
+  "reminderMinute": 30,
+  "reminderChannel": "email"
+}
+```
+
+Valores permitidos en `reminderChannel`: `email`, `whatsapp`, `both`, `none`.
+
+Si un usuario no tiene preferencia, se usa el horario global (`task_reminders_hour`, `task_reminders_minute`) y canal `both`.
+
+## 8) Plantillas editables de notificaciones
+
+Puedes sobrescribir asuntos/cuerpos sin tocar código guardando una plantilla global en `abogapp_records` con:
+
+- `table_name = notification_templates`
+- `app_id = 1`
+
+Payload ejemplo:
+
+```json
+{
+  "assignmentSubject": "Nueva asignación: {{titulo}}",
+  "assignmentBody": "<p>Estimado {{nombre}}, ...</p>",
+  "digestSubject": "Recordatorio diario - {{fecha}}",
+  "digestIntro": "Resumen de tareas pendientes para {{fecha}}."
+}
+```
+
+Variables disponibles:
+
+- `{{nombre}}`, `{{titulo}}`, `{{cliente}}`, `{{vence}}`, `{{prioridad}}`, `{{id}}`
+- `{{fecha}}` (en resumen diario)

@@ -649,6 +649,53 @@ function validarSecretRecordatorio(array $config, array $payload): void {
     }
 }
 
+function obtenerPreferenciasRecordatorioUsuarios(PDO $pdo): array {
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table');
+    $stmt->execute(['table' => 'user_notification_prefs']);
+    $prefs = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $data = json_decode($row['payload'] ?? 'null', true);
+        if (!is_array($data)) continue;
+        $email = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
+        if ($email === '') continue;
+        $channel = mb_strtolower(trim((string) ($data['reminderChannel'] ?? 'both')), 'UTF-8');
+        if (!in_array($channel, ['email', 'whatsapp', 'both', 'none'], true)) $channel = 'both';
+        $hour = isset($data['reminderHour']) ? max(0, min(23, (int) $data['reminderHour'])) : null;
+        $minute = isset($data['reminderMinute']) ? max(0, min(59, (int) $data['reminderMinute'])) : null;
+        $prefs[$email] = ['channel' => $channel, 'hour' => $hour, 'minute' => $minute];
+    }
+    return $prefs;
+}
+
+function obtenerPlantillasNotificacion(PDO $pdo, array $config): array {
+    $defaults = [
+        'assignmentSubject' => (string) ($config['template_assignment_subject'] ?? 'Nueva tarea asignada: {{titulo}}'),
+        'assignmentBody' => (string) ($config['template_assignment_body'] ?? "<p>Estimado {{nombre}}, se te asignó una tarea en Abogapp.</p><p><strong>Título:</strong> {{titulo}}<br><strong>Cliente:</strong> {{cliente}}<br><strong>Vencimiento:</strong> {{vence}}<br><strong>Prioridad:</strong> {{prioridad}}<br><strong>ID:</strong> {{id}}</p><p>Ingresa a la app para ver el detalle <a href=\"https://abogapp.gjabogados.cl\">aquí</a>.</p>"),
+        'digestSubject' => (string) ($config['template_digest_subject'] ?? 'Recordatorio diario 09:00 - Tareas pendientes'),
+        'digestIntro' => (string) ($config['template_digest_intro'] ?? 'Este es tu resumen diario de tareas pendientes en Abogapp ({{fecha}}).'),
+    ];
+    $stmt = $pdo->prepare('SELECT payload FROM abogapp_records WHERE table_name = :table AND app_id = :id LIMIT 1');
+    $stmt->execute(['table' => 'notification_templates', 'id' => 1]);
+    $row = $stmt->fetch();
+    if (!$row) return $defaults;
+    $data = json_decode($row['payload'] ?? 'null', true);
+    if (!is_array($data)) return $defaults;
+    foreach (array_keys($defaults) as $k) {
+        if (!empty($data[$k]) && is_string($data[$k])) {
+            $defaults[$k] = $data[$k];
+        }
+    }
+    return $defaults;
+}
+
+function renderTemplate(string $template, array $vars): string {
+    $out = $template;
+    foreach ($vars as $k => $v) {
+        $out = str_replace('{{' . $k . '}}', (string) $v, $out);
+    }
+    return $out;
+}
+
 switch ($action) {
     case 'pull_table': {
         $table = $_GET['table'] ?? '';
@@ -844,6 +891,7 @@ switch ($action) {
         $vence = formatearFechaCorreo((string) ($task['fechaFin'] ?? $task['fin'] ?? ''));
         $prioridad = trim((string) ($task['prioridad'] ?? 'Sin prioridad'));
         $clienteNombre = obtenerNombreClientePorId($pdo, $task['clienteId'] ?? null);
+        $templates = obtenerPlantillasNotificacion($pdo, $config);
         $asignados = $task['asignadosA'] ?? ($task['asignadoA'] ?? []);
         if (!is_array($asignados)) $asignados = [$asignados];
         $destinatarios = obtenerDestinatariosAsignados($pdo, $asignados);
@@ -855,14 +903,16 @@ switch ($action) {
             $telefono = trim((string) ($dest['telefono'] ?? ''));
             $saludo = $nombre !== '' ? $nombre : $email;
             $saludoHtml = htmlspecialchars($saludo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $subject = "Nueva tarea asignada: {$titulo}";
-            $body = "<p>Estimado {$saludoHtml}, se te asignó una tarea en Abogapp.</p>"
-                . "<p><strong>Título:</strong> " . htmlspecialchars($titulo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
-                . ($clienteNombre ? "<strong>Cliente:</strong> " . htmlspecialchars($clienteNombre, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>" : "")
-                . "<strong>Vencimiento:</strong> " . htmlspecialchars($vence, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
-                . "<strong>Prioridad:</strong> " . htmlspecialchars($prioridad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "<br>"
-                . "<strong>ID:</strong> " . htmlspecialchars($taskId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</p>"
-                . "<p>Ingresa a la app para ver el detalle <a href=\"https://abogapp.gjabogados.cl\">aquí</a>.</p>";
+            $vars = [
+                'nombre' => $saludoHtml,
+                'titulo' => htmlspecialchars($titulo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                'cliente' => htmlspecialchars($clienteNombre ?: 'Sin cliente', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                'vence' => htmlspecialchars($vence, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                'prioridad' => htmlspecialchars($prioridad, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                'id' => htmlspecialchars($taskId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            ];
+            $subject = renderTemplate($templates['assignmentSubject'], $vars);
+            $body = renderTemplate($templates['assignmentBody'], $vars);
             if (enviarCorreoSimple($config, $email, $subject, $body, true)) {
                 $sent++;
             }
@@ -888,21 +938,10 @@ switch ($action) {
         [$programHour, $programMinute] = horaProgramadaRecordatorio($config);
         $nowHour = (int) date('G');
         $nowMinute = (int) date('i');
-        if (!$force && ($nowHour !== $programHour || $nowMinute !== $programMinute)) {
-            echo json_encode([
-                'ok' => true,
-                'data' => [
-                    'sent' => 0,
-                    'skipped' => true,
-                    'reason' => 'outside_scheduled_time',
-                    'scheduled' => sprintf('%02d:%02d', $programHour, $programMinute),
-                    'now' => sprintf('%02d:%02d', $nowHour, $nowMinute),
-                ],
-            ]);
-            break;
-        }
 
         $today = date('Y-m-d');
+        $prefsByEmail = obtenerPreferenciasRecordatorioUsuarios($pdo);
+        $templates = obtenerPlantillasNotificacion($pdo, $config);
         $tablas = [
             ['table' => 'diario', 'tipo' => 'tarea diaria', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
             ['table' => 'tareasinternas', 'tipo' => 'tarea interna', 'titulo' => 'texto', 'vence' => 'fechaFin', 'asignados' => 'asignadosA'],
@@ -960,11 +999,20 @@ switch ($action) {
             $exists->execute(['table' => 'email_task_reminders', 'id' => $digestId]);
             if ($exists->fetchColumn()) continue;
 
-            $subject = 'Recordatorio diario 09:00 - Tareas pendientes';
+            $pref = $prefsByEmail[mb_strtolower($email, 'UTF-8')] ?? ['channel' => 'both', 'hour' => null, 'minute' => null];
+            $targetHour = $pref['hour'] ?? $programHour;
+            $targetMinute = $pref['minute'] ?? $programMinute;
+            if (!$force && ($nowHour !== $targetHour || $nowMinute !== $targetMinute)) {
+                continue;
+            }
+            $channel = $pref['channel'] ?? 'both';
+            if ($channel === 'none') continue;
+
+            $subject = renderTemplate($templates['digestSubject'], ['fecha' => $today]);
             $lines = [];
             $lines[] = "Hola,";
             $lines[] = "";
-            $lines[] = "Este es tu resumen diario de tareas pendientes en Abogapp ({$today}).";
+            $lines[] = renderTemplate($templates['digestIntro'], ['fecha' => $today]);
             $lines[] = "";
             foreach ($tasks as $idx => $task) {
                 $n = $idx + 1;
@@ -978,11 +1026,11 @@ switch ($action) {
             $body = implode("\n", $lines);
 
             $sentAny = false;
-            if ($email !== '' && enviarCorreoSimple($config, $email, $subject, $body)) {
+            if ($channel !== 'whatsapp' && $email !== '' && enviarCorreoSimple($config, $email, $subject, $body)) {
                 $sent++;
                 $sentAny = true;
             }
-            if ($telefono !== '') {
+            if ($channel !== 'email' && $telefono !== '') {
                 $linesWa = [];
                 $linesWa[] = "Estimado {$nombre}, este es tu recordatorio diario de tareas pendientes ({$today}).";
                 foreach ($tasks as $idx => $task) {
@@ -1007,6 +1055,10 @@ switch ($action) {
             }
         }
 
+        if (!$force && $sent === 0 && $waSent === 0) {
+            echo json_encode(['ok' => true, 'data' => ['sent' => 0, 'whatsapp_sent' => 0, 'skipped' => true, 'reason' => 'outside_scheduled_time_or_no_recipients', 'scheduled' => sprintf('%02d:%02d', $programHour, $programMinute), 'now' => sprintf('%02d:%02d', $nowHour, $nowMinute)]]);
+            break;
+        }
         echo json_encode(['ok' => true, 'data' => ['sent' => $sent, 'whatsapp_sent' => $waSent, 'date' => $today, 'recipients' => count($digests)]]);
         break;
     }

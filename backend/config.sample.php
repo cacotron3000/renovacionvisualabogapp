@@ -19,4 +19,8 @@ return [
     'whatsapp_api_version' => 'v20.0',
     'whatsapp_phone_number_id' => 'REEMPLAZAR_PHONE_NUMBER_ID',
     'whatsapp_access_token' => 'REEMPLAZAR_ACCESS_TOKEN',
+    'template_assignment_subject' => 'Nueva tarea asignada: {{titulo}}',
+    'template_assignment_body' => 'Estimado {{nombre}}, se te asignó una tarea en Abogapp.',
+    'template_digest_subject' => 'Recordatorio diario 09:00 - Tareas pendientes',
+    'template_digest_intro' => 'Este es tu resumen diario de tareas pendientes en Abogapp ({{fecha}}).',
 ];

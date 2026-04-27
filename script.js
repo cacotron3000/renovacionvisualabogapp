@@ -606,6 +606,15 @@ function obtenerResultadosBusquedaGlobal(termino) {
       filtros[k] = v;
     }
   });
+  if (filtros.vista) {
+    try {
+      const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
+      const guardada = vistas[filtros.vista];
+      if (typeof guardada === "string" && guardada.trim()) {
+        return obtenerResultadosBusquedaGlobal(guardada);
+      }
+    } catch (_) {}
+  }
   const fuentes = [
     { tabla: "clientes", label: "Cliente", campo: (x) => `${x.nombre || ""} ${x.correo || ""}` },
     { tabla: "expedientes", label: "Caso", campo: (x) => `${x.titulo || ""} ${x.tribunal || ""}` },
@@ -621,15 +630,57 @@ function obtenerResultadosBusquedaGlobal(termino) {
       const okTipo = !filtros.tipo || f.label.toLowerCase() === filtros.tipo;
       const okAsignado = !filtros.asignado || `${d.asignadoA || d.asignadosA || ""}`.toLowerCase().includes(filtros.asignado);
       const okVencida = !filtros.vencida || (filtros.vencida === "true" ? esVencida(d.fin || d.fecha, d.estado) : true);
+      const sinCliente = String(filtros.sincliente || "") === "true";
+      const fechaControl = d.fin || d.fechaFin || d.fecha || "";
+      const hoy = new Date().toISOString().slice(0, 10);
+      const venceHoy = String(filtros.vencehoy || "") === "true";
+      const usuario = JSON.parse(localStorage.getItem("usuarioActual") || "{}");
+      const nombreUsuario = String(usuario.nombre || "").toLowerCase();
+      const mias = String(filtros.mias || "") === "true";
+      const sinAccion = String(filtros.sinaccion || "") === "true";
+      const idsCasos = JSON.parse(localStorage.getItem("expedientes") || "[]");
+      const exp = idsCasos.find((e) => e.id === d.expedienteId);
+      const clienteId = d.clienteId || exp?.clienteId || null;
+      const asignadosLista = []
+        .concat(d.asignadoA || [])
+        .concat(d.asignadosA || [])
+        .map((x) => String(x).toLowerCase());
+      const okSinCliente = !sinCliente || !clienteId;
+      const okVenceHoy = !venceHoy || String(fechaControl).slice(0, 10) === hoy;
+      const okMias = !mias || (nombreUsuario && asignadosLista.some((x) => x.includes(nombreUsuario)));
+      const okSinAccion = !sinAccion || !String(d.proximaAccion || "").trim();
       const tags = Array.isArray(d.tags) ? d.tags.join(",").toLowerCase() : "";
       const okTag = !filtros.tag || tags.includes(filtros.tag);
-      if (okTexto && okTipo && okAsignado && okVencida && okTag) {
+      if (okTexto && okTipo && okAsignado && okVencida && okTag && okSinCliente && okVenceHoy && okMias && okSinAccion) {
         out.push({ tipo: f.label, texto: txt.trim() || "(sin texto)", raw: d });
       }
     });
   });
   return out.slice(0, 15);
 }
+
+window.guardarVistaFiltroTareas = function (nombre, query) {
+  if (!nombre || !query) return false;
+  const key = String(nombre).trim().toLowerCase();
+  if (!key) return false;
+  const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
+  vistas[key] = String(query).trim();
+  localStorage.setItem("vistasFiltrosTareas", JSON.stringify(vistas));
+  return true;
+};
+
+window.aplicarVistaFiltroTareas = function (nombre) {
+  const key = String(nombre || "").trim().toLowerCase();
+  if (!key) return false;
+  const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
+  const query = vistas[key];
+  if (!query) return false;
+  const input = document.getElementById("busquedaGlobalInput");
+  if (!input) return false;
+  input.value = query;
+  input.dispatchEvent(new Event("input"));
+  return true;
+};
 
 function renderQuickPanelResultado(r) {
   const raw = r?.raw || {};
