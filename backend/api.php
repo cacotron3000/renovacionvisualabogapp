@@ -609,6 +609,17 @@ function obtenerRecordsTabla(PDO $pdo, string $table): array {
     return $out;
 }
 
+function obtenerAppIdsTabla(PDO $pdo, string $table): array {
+    $stmt = $pdo->prepare('SELECT app_id FROM abogapp_records WHERE table_name = :table');
+    $stmt->execute(['table' => $table]);
+    $set = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $id = (int) ($row['app_id'] ?? 0);
+        if ($id > 0) $set[$id] = true;
+    }
+    return $set;
+}
+
 function esEstadoTerminado(array $row): bool {
     $estado = mb_strtolower(trim((string) ($row['estado'] ?? '')), 'UTF-8');
     if ($estado === '') return false;
@@ -744,13 +755,19 @@ switch ($action) {
 
         $toUpsert = [];
         $deleted = 0;
+        $archivadasIds = obtenerAppIdsTabla($pdo, 'audienciasarchivadas');
         foreach ($items as $ev) {
             $eventId = (string) ($ev['id'] ?? '');
             if ($eventId === '') continue;
+            $appId = gcalAppId($eventId);
             if (($ev['status'] ?? '') === 'cancelled') {
                 $stmt = $pdo->prepare('DELETE FROM abogapp_records WHERE table_name = :table AND app_id = :id');
-                $stmt->execute(['table' => 'audiencias', 'id' => gcalAppId($eventId)]);
+                $stmt->execute(['table' => 'audiencias', 'id' => $appId]);
                 $deleted += (int) $stmt->rowCount();
+                continue;
+            }
+            // Si ya fue archivada/completada localmente, no volver a cargarla desde Google.
+            if (isset($archivadasIds[$appId])) {
                 continue;
             }
             $eventDate = gcalEventStartDateYmd($ev);
