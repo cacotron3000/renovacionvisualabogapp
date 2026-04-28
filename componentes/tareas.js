@@ -23,6 +23,13 @@ let filtroEstado = "";
 let editandoTarea = false;                // Bandera para saber si estamos editando
 let tareaEditandoId = null;               // ID de la tarea en edición
 
+function parseTagsTarea(valor) {
+  return String(valor || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 const listaComentariosGestionDiv = document.getElementById("listaComentariosGestion");
 const nuevoComentarioGestionInput = document.getElementById("nuevoComentarioGestion");
 const btnAgregarComentarioGestion = document.getElementById("btnAgregarComentarioGestion");
@@ -253,6 +260,7 @@ tareaForm.addEventListener("submit", async (e) => {
     titulo: document.getElementById("tarea-titulo").value,
     descripcion: descripcionPlantilla || "no indicado",
     proximaAccion: document.getElementById("tarea-proxima-accion").value.trim(),
+    tags: parseTagsTarea(document.getElementById("tarea-tags")?.value),
     expedienteId: parseInt(document.getElementById("tarea-expediente").value),
     inicio: document.getElementById("tarea-inicio").value || new Date().toISOString().slice(0, 10),
     fin: document.getElementById("tarea-fin").value || new Date().toISOString().slice(0, 10),
@@ -338,6 +346,8 @@ function editarTarea(id) {
   document.getElementById("tarea-descripcion").value =
     t.descripcion === "no indicado" ? "" : t.descripcion;
   document.getElementById("tarea-proxima-accion").value = t.proximaAccion || "";
+  const inputTags = document.getElementById("tarea-tags");
+  if (inputTags) inputTags.value = Array.isArray(t.tags) ? t.tags.join(", ") : "";
   setSelectValue(document.getElementById("tarea-expediente"), t.expedienteId);
   document.getElementById("tarea-inicio").value = t.inicio;
   document.getElementById("tarea-fin").value = t.fin;

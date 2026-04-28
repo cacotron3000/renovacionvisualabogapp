@@ -596,13 +596,23 @@ function renderVistaHoy() {
   registrarReglasProductividad();
 }
 
+function parseTagsInput(valor) {
+  return String(valor || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function obtenerResultadosBusquedaGlobal(termino) {
+
   const q = (termino || "").trim().toLowerCase();
   if (!q) return [];
   const filtros = {};
   q.split(" ").forEach((p) => {
     if (p.includes(":")) {
-      const [k, v] = p.split(":");
+      const idx = p.indexOf(":");
+      const k = p.slice(0, idx);
+      const v = p.slice(idx + 1);
       filtros[k] = v;
     }
   });
@@ -626,7 +636,7 @@ function obtenerResultadosBusquedaGlobal(termino) {
     const datos = JSON.parse(localStorage.getItem(f.tabla) || "[]");
     datos.forEach((d) => {
       const txt = f.campo(d);
-      const okTexto = txt.toLowerCase().includes(q.replace(/\\w+:[^\\s]+/g, "").trim());
+      const okTexto = txt.toLowerCase().includes(q.replace(/[\w-]+:[^\s]+/g, "").trim());
       const okTipo = !filtros.tipo || f.label.toLowerCase() === filtros.tipo;
       const okAsignado = !filtros.asignado || `${d.asignadoA || d.asignadosA || ""}`.toLowerCase().includes(filtros.asignado);
       const okVencida = !filtros.vencida || (filtros.vencida === "true" ? esVencida(d.fin || d.fecha, d.estado) : true);
@@ -638,6 +648,7 @@ function obtenerResultadosBusquedaGlobal(termino) {
       const nombreUsuario = String(usuario.nombre || "").toLowerCase();
       const mias = String(filtros.mias || "") === "true";
       const sinAccion = String(filtros.sinaccion || "") === "true";
+      const accionFiltro = String(filtros.accion || "").toLowerCase();
       const idsCasos = JSON.parse(localStorage.getItem("expedientes") || "[]");
       const exp = idsCasos.find((e) => e.id === d.expedienteId);
       const clienteId = d.clienteId || exp?.clienteId || null;
@@ -649,9 +660,11 @@ function obtenerResultadosBusquedaGlobal(termino) {
       const okVenceHoy = !venceHoy || String(fechaControl).slice(0, 10) === hoy;
       const okMias = !mias || (nombreUsuario && asignadosLista.some((x) => x.includes(nombreUsuario)));
       const okSinAccion = !sinAccion || !String(d.proximaAccion || "").trim();
+      const vencidaAccion = Boolean(fechaControl) && String(fechaControl).slice(0, 10) < hoy && !String(d.estado || "").toLowerCase().includes("termin");
+      const okAccion = !accionFiltro || (accionFiltro === "vencida" ? vencidaAccion : (accionFiltro === "sin-definir" ? !String(d.proximaAccion || "").trim() : true));
       const tags = Array.isArray(d.tags) ? d.tags.join(",").toLowerCase() : "";
       const okTag = !filtros.tag || tags.includes(filtros.tag);
-      if (okTexto && okTipo && okAsignado && okVencida && okTag && okSinCliente && okVenceHoy && okMias && okSinAccion) {
+      if (okTexto && okTipo && okAsignado && okVencida && okTag && okSinCliente && okVenceHoy && okMias && okSinAccion && okAccion) {
         out.push({ tipo: f.label, texto: txt.trim() || "(sin texto)", raw: d });
       }
     });
@@ -1182,6 +1195,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const syncStatus = document.getElementById("syncStatus");
   const busquedaGlobalInput = document.getElementById("busquedaGlobalInput");
   const busquedaGlobalResultados = document.getElementById("busquedaGlobalResultados");
+  const quickFilterBtns = document.querySelectorAll("[data-quick-filter]");
+  const vistaFiltrosSelect = document.getElementById("vistaFiltrosSelect");
   const quickPanel = document.getElementById("quickPanel");
   const quickPanelCerrar = document.getElementById("quickPanelCerrar");
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
@@ -1309,6 +1324,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     { label: "Abrir Clientes", vista: "clientes" },
     { label: "Abrir Documentos", vista: "generador" },
     { label: "Abrir Operación interna", vista: "internas" },
+    { label: "Guardar vista de búsqueda actual", accion: "guardar_vista" },
+    { label: "Mostrar clientes incompletos", accion: "clientes_incompletos" },
   ];
 
   const actualizarKPIsWorkspace = () => {
@@ -1337,7 +1354,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     commandPalette.classList.remove("oculto");
     commandPaletteInput.value = "";
     commandPaletteResults.innerHTML = comandos
-      .map((c) => `<button type="button" data-vista="${c.vista}">${c.label}</button>`)
+      .map((c) => `<button type="button" ${c.vista ? `data-vista="${c.vista}"` : `data-accion="${c.accion || ""}"`}>${c.label}</button>`)
       .join("");
     commandPaletteInput.focus();
   }
@@ -1350,19 +1367,44 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (e.target === commandPalette) cerrarCommandPalette();
     });
     commandPaletteResults.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-vista]");
+      const btn = e.target.closest("button");
       if (!btn) return;
       const vista = btn.getAttribute("data-vista");
-      if (!vista) return;
-      localStorage.setItem("ultimaVista", vista);
-      cambiarVista(vista);
-      cerrarCommandPalette();
+      const accion = btn.getAttribute("data-accion");
+      if (vista) {
+        localStorage.setItem("ultimaVista", vista);
+        cambiarVista(vista);
+        cerrarCommandPalette();
+        return;
+      }
+      if (accion === "guardar_vista") {
+        const nombre = prompt("Nombre de la vista guardada:");
+        const q = busquedaGlobalInput?.value?.trim();
+        if (nombre && q) {
+          guardarVistaFiltroTareas(nombre, q);
+          refrescarVistasGuardadasUI();
+          mostrarNotificacion("Vista guardada", "#00E500");
+        }
+        cerrarCommandPalette();
+        return;
+      }
+      if (accion === "clientes_incompletos") {
+        busquedaGlobalInput.value = "tipo:cliente";
+        busquedaGlobalInput.dispatchEvent(new Event("input"));
+        const buscarClientes = document.getElementById("buscarClientes");
+        if (buscarClientes) {
+          buscarClientes.value = "";
+          buscarClientes.dispatchEvent(new Event("input"));
+        }
+        if (window.filtrarClientesIncompletos) window.filtrarClientesIncompletos();
+        cerrarCommandPalette();
+      }
     });
     commandPaletteInput.addEventListener("input", () => {
       const q = commandPaletteInput.value.trim().toLowerCase();
       const filtrados = comandos.filter((c) => c.label.toLowerCase().includes(q));
       commandPaletteResults.innerHTML = filtrados
-        .map((c) => `<button type="button" data-vista="${c.vista}">${c.label}</button>`)
+        .map((c) => `<button type="button" ${c.vista ? `data-vista="${c.vista}"` : `data-accion="${c.accion || ""}"`}>${c.label}</button>`)
         .join("") || `<p style="padding:12px;">Sin resultados</p>`;
     });
   }
@@ -1394,6 +1436,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       quickPanel.style.height = `${window.innerHeight}px`;
     });
   }
+
+  
+  const refrescarVistasGuardadasUI = () => {
+    if (!vistaFiltrosSelect) return;
+    const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
+    vistaFiltrosSelect.innerHTML = '<option value="">Vistas guardadas</option>';
+    Object.keys(vistas).sort().forEach((k) => {
+      const opt = document.createElement("option");
+      opt.value = k;
+      opt.textContent = k;
+      vistaFiltrosSelect.appendChild(opt);
+    });
+  };
+  refrescarVistasGuardadasUI();
+  vistaFiltrosSelect?.addEventListener("change", () => {
+    if (!vistaFiltrosSelect.value) return;
+    aplicarVistaFiltroTareas(vistaFiltrosSelect.value);
+  });
+  quickFilterBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const q = btn.getAttribute("data-quick-filter") || "";
+      if (!q || !busquedaGlobalInput) return;
+      busquedaGlobalInput.value = q;
+      busquedaGlobalInput.dispatchEvent(new Event("input"));
+    });
+  });
 
   const observerModales = new MutationObserver(() => {
     ajustarPosicionModalesVisibles();

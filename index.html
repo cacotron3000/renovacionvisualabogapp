@@ -50,7 +50,17 @@
           <span class="search-icon"><i class="fa-sharp fa-solid fa-magnifying-glass"></i></span>
           <input type="search" id="busquedaGlobalInput" name="global_search" placeholder="Buscar en toda la app..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
           <span class="search-shortcut">/</span>
+          <select id="vistaFiltrosSelect" title="Aplicar vista guardada">
+            <option value="">Vistas guardadas</option>
+          </select>
           <div id="busquedaGlobalResultados" class="oculto"></div>
+        </div>
+        <div class="header-filtros-rapidos">
+          <button type="button" class="mini-boton" data-quick-filter="sincliente:true tipo:gestión">Sin cliente</button>
+          <button type="button" class="mini-boton" data-quick-filter="vencehoy:true tipo:gestión">Vence hoy</button>
+          <button type="button" class="mini-boton" data-quick-filter="mias:true tipo:gestión">Asignadas a mí</button>
+          <button type="button" class="mini-boton" data-quick-filter="sinaccion:true tipo:gestión">Sin próxima acción</button>
+          <button type="button" class="mini-boton" data-quick-filter="accion:vencida tipo:gestión">Acción vencida</button>
         </div>
       </div>
     </div>
@@ -512,6 +522,7 @@
     <input type="text" id="tarea-titulo" placeholder="Título de la gestión" required>
     <textarea id="tarea-descripcion" placeholder="Descripción"></textarea>
     <input type="text" id="tarea-proxima-accion" placeholder="Próxima acción (obligatoria)" required>
+    <input type="text" id="tarea-tags" placeholder="Tags (ej: area:familia, urgencia:alta)">
 
     <select id="tarea-expediente" required>
       <option value="">Seleccionar caso</option>
@@ -544,26 +555,32 @@
     <span id="modalCerrar" class="modal-cerrar">×</span>
     <h3><i class="fa-sharp fa-solid fa-user-plus"></i> Agregar un Cliente</h3></br>
     <form id="clienteForm">
+      <div class="onboarding-switch">
+        <button type="button" class="mini-boton" id="clientePasoRapidoBtn">Alta rápida</button>
+        <button type="button" class="mini-boton" id="clientePasoCompletoBtn">Ficha completa</button>
+      </div>
       <label for="nombre">Nombre:</label>
       <input type="text" id="nombre" required />
 
       <label for="correo">Correo:</label>
-      <input type="email" id="correo" required />
+      <input type="email" id="correo" />
 
       <label for="telefono">Teléfono:</label>
-      <input type="tel" id="telefono" required />
+      <input type="tel" id="telefono" />
 
-      <label for="direccion">Dirección:</label>
-      <input type="text" id="direccion" />
+      <div id="clienteCamposCompletos">
+        <label for="direccion">Dirección:</label>
+        <input type="text" id="direccion" />
 
-      <label for="rut">RUT:</label>
-      <input type="text" id="rut" />
+        <label for="rut">RUT:</label>
+        <input type="text" id="rut" />
 
-      <label for="confidencial">Notas:</label>
-      <textarea id="confidencial"></textarea>
+        <label for="confidencial">Notas:</label>
+        <textarea id="confidencial"></textarea>
 
-      <label for="link">Carpeta:</label>
-      <input type="url" id="link" />
+        <label for="link">Carpeta:</label>
+        <input type="url" id="link" />
+      </div>
 
       <div id="cotizacionesWrapper">
         <label>Cotizaciones:</label>
@@ -646,6 +663,8 @@
       <input type="date" id="tareaDiaFechaFin" placeholder="Fecha de término (opcional)">
       <label for="tareaDiaProximaAccion">Próxima acción *</label>
       <input type="text" id="tareaDiaProximaAccion" required placeholder="Siguiente paso concreto">
+      <label for="tareaDiaTags">Tags</label>
+      <input type="text" id="tareaDiaTags" placeholder="Ej: tipo:seguimiento, riesgo:plazo">
       <button type="submit" class="boton">Guardar</button>
     </form>
   </div>
@@ -690,6 +709,8 @@
       <input type="date" id="tareaInternaFechaFin" placeholder="Fecha de término (opcional)">
       <label for="tareaInternaProximaAccion">Próxima acción *</label>
       <input type="text" id="tareaInternaProximaAccion" required placeholder="Siguiente paso concreto">
+      <label for="tareaInternaTags">Tags</label>
+      <input type="text" id="tareaInternaTags" placeholder="Ej: area:laboral, urgencia:media">
       <button type="submit" class="boton">Guardar</button>
     </form>
   </div>
