@@ -1922,6 +1922,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const importarJsonLocalBtn = document.getElementById("importarJsonLocalBtn");
     const importarJsonLocalInput = document.getElementById("importarJsonLocalInput");
     const sincronizarGoogleCalendarBtn = document.getElementById("sincronizarGoogleCalendarBtn");
+    const prefsRecordatorioUsers = document.getElementById("prefsRecordatorioUsers");
+    const guardarPrefsRecordatorioBtn = document.getElementById("guardarPrefsRecordatorioBtn");
     const tablasSync = [
       { table: "clientes", key: "clientes" },
       { table: "expedientes", key: "expedientes" },
@@ -1938,6 +1940,87 @@ document.addEventListener("DOMContentLoaded", async () => {
       { table: "audienciasarchivadas", key: "audienciasArchivadas" },
       { table: "notificaciones", key: "notificaciones" },
     ];
+
+    const hashEmailAId = (email) => {
+      let h = 0;
+      const s = String(email || "").toLowerCase();
+      for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return Math.abs(h) + 1000;
+    };
+
+    async function cargarPreferenciasRecordatorioUI() {
+      if (!prefsRecordatorioUsers) return;
+      prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#64748b'>Cargando usuarios...</p>";
+      try {
+        if (window.supabaseSync?.pullTabla) {
+          await window.supabaseSync.pullTabla("user_notification_prefs");
+        }
+        const prefs = JSON.parse(localStorage.getItem("user_notification_prefs") || "[]");
+        const mapPrefs = new Map(
+          prefs
+            .filter((x) => x && x.email)
+            .map((x) => [String(x.email).toLowerCase(), x])
+        );
+        const users = window.supabaseAuth?.fetchUsers ? await window.supabaseAuth.fetchUsers() : [];
+        if (!users.length) {
+          prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#64748b'>No hay usuarios para configurar.</p>";
+          return;
+        }
+        const html = users
+          .map((u) => {
+            const email = String(u.email || "").toLowerCase();
+            const pref = mapPrefs.get(email) || {};
+            const h = Number.isFinite(pref.reminderHour) ? pref.reminderHour : "";
+            const m = Number.isFinite(pref.reminderMinute) ? pref.reminderMinute : "";
+            const channel = pref.reminderChannel || "both";
+            return `
+              <div class="pref-rem-row" data-email="${email}">
+                <label>${u.nombre || email}<br><small>${email}</small></label>
+                <select class="pref-hour"><option value="">Global</option>${Array.from({length:24},(_,i)=>`<option value="${i}" ${String(i)===String(h)?"selected":""}>${String(i).padStart(2,"0")}</option>`).join("")}</select>
+                <select class="pref-minute"><option value="">Global</option>${Array.from({length:60},(_,i)=>`<option value="${i}" ${String(i)===String(m)?"selected":""}>${String(i).padStart(2,"0")}</option>`).join("")}</select>
+                <select class="pref-channel">
+                  <option value="both" ${channel==="both"?"selected":""}>Email + WhatsApp</option>
+                  <option value="email" ${channel==="email"?"selected":""}>Solo Email</option>
+                  <option value="whatsapp" ${channel==="whatsapp"?"selected":""}>Solo WhatsApp</option>
+                  <option value="none" ${channel==="none"?"selected":""}>Sin recordatorio</option>
+                </select>
+              </div>
+            `;
+          })
+          .join("");
+        prefsRecordatorioUsers.innerHTML = html;
+      } catch (e) {
+        console.error("No se pudo cargar preferencias de recordatorio:", e);
+        prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#b91c1c'>No se pudieron cargar las preferencias.</p>";
+      }
+    }
+
+    async function guardarPreferenciasRecordatorioUI() {
+      if (!prefsRecordatorioUsers || !window.supabaseSync?.pushRegistro) return;
+      const rows = Array.from(prefsRecordatorioUsers.querySelectorAll(".pref-rem-row"));
+      let ok = true;
+      for (const row of rows) {
+        const email = String(row.dataset.email || "").toLowerCase();
+        if (!email) continue;
+        const hourValue = row.querySelector(".pref-hour")?.value;
+        const minuteValue = row.querySelector(".pref-minute")?.value;
+        const channel = row.querySelector(".pref-channel")?.value || "both";
+        const payload = {
+          id: hashEmailAId(email),
+          email,
+          reminderHour: hourValue === "" ? null : parseInt(hourValue, 10),
+          reminderMinute: minuteValue === "" ? null : parseInt(minuteValue, 10),
+          reminderChannel: channel,
+          updatedAt: new Date().toISOString(),
+        };
+        const saved = await window.supabaseSync.pushRegistro("user_notification_prefs", payload);
+        if (!saved) ok = false;
+      }
+      mostrarNotificacion(
+        ok ? "Preferencias de recordatorio guardadas" : "Algunas preferencias no se pudieron guardar",
+        ok ? "#00A36C" : "#FF9800"
+      );
+    }
 
     function construirBackupLocal() {
       const data = {};
@@ -2029,6 +2112,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("configFuente").value = configuracion.fuente;
       document.getElementById("configFormatoFecha").value = configuracion.formatoFecha;
       document.getElementById("configFormatoHora").value = configuracion.formatoHora;
+      cargarPreferenciasRecordatorioUI();
       mostrarModal(modalConfig);
     });
     if (cerrarConfig) cerrarConfig.addEventListener("click", () => modalConfig.classList.add("oculto"));
@@ -2136,6 +2220,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (sincronizarGoogleCalendarBtn) {
       sincronizarGoogleCalendarBtn.addEventListener("click", async () => {
         await sincronizarGoogleCalendarManual(sincronizarGoogleCalendarBtn);
+      });
+    }
+    if (guardarPrefsRecordatorioBtn) {
+      guardarPrefsRecordatorioBtn.addEventListener("click", async () => {
+        await guardarPreferenciasRecordatorioUI();
       });
     }
   }

@@ -2273,6 +2273,29 @@ body.dark-mode .historial-lista li {
   margin-right: 6px;
 }
 
+.prefs-recordatorio-users {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #fff;
+}
+
+.pref-rem-row {
+  display: grid;
+  grid-template-columns: 1.2fr .6fr .6fr .8fr;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.pref-rem-row label {
+  font-size: .86rem;
+  color: #334155;
+}
+
 body.presentacion-mode .site-header,
 body.presentacion-mode .sidebar,
 body.presentacion-mode .quick-action-fab,
