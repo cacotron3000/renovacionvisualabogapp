@@ -616,15 +616,6 @@ function obtenerResultadosBusquedaGlobal(termino) {
       filtros[k] = v;
     }
   });
-  if (filtros.vista) {
-    try {
-      const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
-      const guardada = vistas[filtros.vista];
-      if (typeof guardada === "string" && guardada.trim()) {
-        return obtenerResultadosBusquedaGlobal(guardada);
-      }
-    } catch (_) {}
-  }
   const fuentes = [
     { tabla: "clientes", label: "Cliente", campo: (x) => `${x.nombre || ""} ${x.correo || ""}` },
     { tabla: "expedientes", label: "Caso", campo: (x) => `${x.titulo || ""} ${x.tribunal || ""}` },
@@ -672,28 +663,6 @@ function obtenerResultadosBusquedaGlobal(termino) {
   return out.slice(0, 15);
 }
 
-window.guardarVistaFiltroTareas = function (nombre, query) {
-  if (!nombre || !query) return false;
-  const key = String(nombre).trim().toLowerCase();
-  if (!key) return false;
-  const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
-  vistas[key] = String(query).trim();
-  localStorage.setItem("vistasFiltrosTareas", JSON.stringify(vistas));
-  return true;
-};
-
-window.aplicarVistaFiltroTareas = function (nombre) {
-  const key = String(nombre || "").trim().toLowerCase();
-  if (!key) return false;
-  const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
-  const query = vistas[key];
-  if (!query) return false;
-  const input = document.getElementById("busquedaGlobalInput");
-  if (!input) return false;
-  input.value = query;
-  input.dispatchEvent(new Event("input"));
-  return true;
-};
 
 function renderQuickPanelResultado(r) {
   const raw = r?.raw || {};
@@ -1196,7 +1165,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const busquedaGlobalInput = document.getElementById("busquedaGlobalInput");
   const busquedaGlobalResultados = document.getElementById("busquedaGlobalResultados");
   const quickFilterBtns = document.querySelectorAll("[data-quick-filter]");
-  const vistaFiltrosSelect = document.getElementById("vistaFiltrosSelect");
   const quickPanel = document.getElementById("quickPanel");
   const quickPanelCerrar = document.getElementById("quickPanelCerrar");
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
@@ -1324,7 +1292,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     { label: "Abrir Clientes", vista: "clientes" },
     { label: "Abrir Documentos", vista: "generador" },
     { label: "Abrir Operación interna", vista: "internas" },
-    { label: "Guardar vista de búsqueda actual", accion: "guardar_vista" },
     { label: "Mostrar clientes incompletos", accion: "clientes_incompletos" },
   ];
 
@@ -1374,17 +1341,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (vista) {
         localStorage.setItem("ultimaVista", vista);
         cambiarVista(vista);
-        cerrarCommandPalette();
-        return;
-      }
-      if (accion === "guardar_vista") {
-        const nombre = prompt("Nombre de la vista guardada:");
-        const q = busquedaGlobalInput?.value?.trim();
-        if (nombre && q) {
-          guardarVistaFiltroTareas(nombre, q);
-          refrescarVistasGuardadasUI();
-          mostrarNotificacion("Vista guardada", "#00E500");
-        }
         cerrarCommandPalette();
         return;
       }
@@ -1438,22 +1394,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   
-  const refrescarVistasGuardadasUI = () => {
-    if (!vistaFiltrosSelect) return;
-    const vistas = JSON.parse(localStorage.getItem("vistasFiltrosTareas") || "{}");
-    vistaFiltrosSelect.innerHTML = '<option value="">Vistas guardadas</option>';
-    Object.keys(vistas).sort().forEach((k) => {
-      const opt = document.createElement("option");
-      opt.value = k;
-      opt.textContent = k;
-      vistaFiltrosSelect.appendChild(opt);
-    });
-  };
-  refrescarVistasGuardadasUI();
-  vistaFiltrosSelect?.addEventListener("change", () => {
-    if (!vistaFiltrosSelect.value) return;
-    aplicarVistaFiltroTareas(vistaFiltrosSelect.value);
-  });
   quickFilterBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       const q = btn.getAttribute("data-quick-filter") || "";
