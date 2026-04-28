@@ -23,6 +23,13 @@ let filtroEstado = "";
 let editandoTarea = false;                // Bandera para saber si estamos editando
 let tareaEditandoId = null;               // ID de la tarea en edición
 
+function parseTagsTarea(valor) {
+  return String(valor || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 const listaComentariosGestionDiv = document.getElementById("listaComentariosGestion");
 const nuevoComentarioGestionInput = document.getElementById("nuevoComentarioGestion");
 const btnAgregarComentarioGestion = document.getElementById("btnAgregarComentarioGestion");
@@ -241,7 +248,7 @@ tareaForm.addEventListener("submit", async (e) => {
     } else if (textoExp.includes("laboral") || textoExp.includes("trabajo")) {
       descripcionPlantilla = "Plantilla Laboral: recopilar antecedentes, preparar estrategia, actualizar cliente y registrar avance.";
     } else {
-      descripcionPlantilla = "Plantilla General: revisar caso, registrar próximos hitos y coordinar tareas.";
+      descripcionPlantilla = "Plantilla General: revisar tarea, registrar próximos hitos y coordinar tareas.";
     }
   }
   const nuevaTarea = {
@@ -253,6 +260,7 @@ tareaForm.addEventListener("submit", async (e) => {
     titulo: document.getElementById("tarea-titulo").value,
     descripcion: descripcionPlantilla || "no indicado",
     proximaAccion: document.getElementById("tarea-proxima-accion").value.trim(),
+    tags: parseTagsTarea(document.getElementById("tarea-tags")?.value),
     expedienteId: parseInt(document.getElementById("tarea-expediente").value),
     inicio: document.getElementById("tarea-inicio").value || new Date().toISOString().slice(0, 10),
     fin: document.getElementById("tarea-fin").value || new Date().toISOString().slice(0, 10),
@@ -263,7 +271,7 @@ tareaForm.addEventListener("submit", async (e) => {
       : usuario.nombre
   };
   if (!nuevaTarea.proximaAccion) {
-    mostrarNotificacion("Debe registrar la próxima acción de la gestión", "#FF9800");
+    mostrarNotificacion("Debe registrar la próxima acción de la tarea", "#FF9800");
     return;
   }
 
@@ -307,7 +315,7 @@ tareaForm.addEventListener("submit", async (e) => {
   if (ok) {
     mostrarNotificacion("Datos guardados", "#00E500");
     registrarNotificacion(
-      `Gestión "${nuevaTarea.titulo}" ${accion} por ${usuario.nombre}`,
+      `Tarea "${nuevaTarea.titulo}" ${accion} por ${usuario.nombre}`,
       "tareas"
     );
     tareaForm.reset();
@@ -338,6 +346,8 @@ function editarTarea(id) {
   document.getElementById("tarea-descripcion").value =
     t.descripcion === "no indicado" ? "" : t.descripcion;
   document.getElementById("tarea-proxima-accion").value = t.proximaAccion || "";
+  const inputTags = document.getElementById("tarea-tags");
+  if (inputTags) inputTags.value = Array.isArray(t.tags) ? t.tags.join(", ") : "";
   setSelectValue(document.getElementById("tarea-expediente"), t.expedienteId);
   document.getElementById("tarea-inicio").value = t.inicio;
   document.getElementById("tarea-fin").value = t.fin;
@@ -368,7 +378,7 @@ function eliminarTarea(id) {
   }
   const usuario = JSON.parse(localStorage.getItem("usuarioActual") || "{}");
   if (tarea) {
-    registrarNotificacion(`Gestión "${tarea.titulo}" eliminada por ${usuario.nombre}`, "tareas");
+    registrarNotificacion(`Tarea "${tarea.titulo}" eliminada por ${usuario.nombre}`, "tareas");
   }
   cargarTareas();
   if (typeof actualizarDashboard === "function") {
@@ -396,7 +406,7 @@ function archivarTarea(id) {
   archivadas.push(tarea);
   localStorage.setItem("tareasArchivadas", JSON.stringify(archivadas));
 
-  registrarNotificacion(`Gestión "${tarea.titulo}" archivada por ${usuario.nombre}`, "tareas");
+  registrarNotificacion(`Tarea "${tarea.titulo}" archivada por ${usuario.nombre}`, "tareas");
 
   cargarTareas();
   cargarTareasArchivadas();
@@ -423,7 +433,7 @@ function desarchivarTarea(id) {
   localStorage.setItem("tareasArchivadas", JSON.stringify(archivadas));
 
   const usuario = JSON.parse(localStorage.getItem("usuarioActual") || "{}");
-  registrarNotificacion(`Gestión "${tarea.titulo}" desarchivada por ${usuario.nombre}`, "tareas");
+  registrarNotificacion(`Tarea "${tarea.titulo}" desarchivada por ${usuario.nombre}`, "tareas");
 
   cargarTareas();
   cargarTareasArchivadas();
@@ -542,7 +552,7 @@ function cargarTareasArchivadas() {
 }
 
 // -------------------------------
-// 💬 Comentarios de gestiones
+// 💬 Comentarios de tareas
 // -------------------------------
 function obtenerComentariosGestion(id) {
   const todos = JSON.parse(localStorage.getItem("comentariosGestiones")) || [];
@@ -626,7 +636,7 @@ async function agregarComentarioGestion(id, titulo) {
   if (ok) {
     mostrarNotificacion("Comentario agregado", "#00E500");
     registrarNotificacion(
-      `Nuevo comentario en gestión "${titulo}" por ${usuario.nombre}`,
+      `Nuevo comentario en tarea "${titulo}" por ${usuario.nombre}`,
       "tareas"
     );
     nuevoComentarioGestionInput.value = "";

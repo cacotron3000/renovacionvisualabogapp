@@ -9,6 +9,10 @@
 // Objetivo: Oculta todas las secciones (.vista) y muestra solo la seleccionada.
 // Nivel de relevancia: 🔥 Crítico. Es el corazón de la navegación entre módulos.
 let vistaActual = localStorage.getItem("ultimaVista") || "dashboard";
+if (vistaActual === "generador") {
+  vistaActual = "dashboard";
+  localStorage.setItem("ultimaVista", "dashboard");
+}
 
 // ------------------------------
 // ⏳ Manejo de expiración de sesión
@@ -17,6 +21,8 @@ const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 horas
 let sessionTimer;
 let sessionStart = parseInt(localStorage.getItem("sessionStart") || Date.now());
 window.sesionExpirada = false;
+let autoSyncGoogleInterval = null;
+let autoSyncGoogleEnCurso = false;
 
 const DEFAULT_CONFIG = {
   radius: "12px",
@@ -224,6 +230,10 @@ async function cargarNotificacionesDesdeSupabase() {
 }
 
 async function cerrarSesion() {
+  if (autoSyncGoogleInterval) {
+    clearInterval(autoSyncGoogleInterval);
+    autoSyncGoogleInterval = null;
+  }
   localStorage.removeItem("usuarioActual");
   localStorage.removeItem("sessionStart");
   if (window.sb && sb.auth) {
@@ -427,7 +437,7 @@ function renderVistaHoy() {
 
   const items = [];
   tareas.forEach((t) => items.push({
-    tipo: "Gestión",
+    tipo: "Tarea",
     texto: t.titulo || t.descripcion || "Sin título",
     fecha: t.fin || "",
     fechaAlt: t.inicio || t.created_at || "",
@@ -586,20 +596,29 @@ function renderVistaHoy() {
   registrarReglasProductividad();
 }
 
+function parseTagsInput(valor) {
+  return String(valor || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function obtenerResultadosBusquedaGlobal(termino) {
+
   const q = (termino || "").trim().toLowerCase();
   if (!q) return [];
   const filtros = {};
   q.split(" ").forEach((p) => {
     if (p.includes(":")) {
-      const [k, v] = p.split(":");
+      const idx = p.indexOf(":");
+      const k = p.slice(0, idx);
+      const v = p.slice(idx + 1);
       filtros[k] = v;
     }
   });
   const fuentes = [
     { tabla: "clientes", label: "Cliente", campo: (x) => `${x.nombre || ""} ${x.correo || ""}` },
-    { tabla: "expedientes", label: "Caso", campo: (x) => `${x.titulo || ""} ${x.tribunal || ""}` },
-    { tabla: "tareas", label: "Gestión", campo: (x) => `${x.titulo || ""} ${x.descripcion || ""}` },
+    { tabla: "tareas", label: "Tarea", campo: (x) => `${x.titulo || ""} ${x.descripcion || ""}` },
     { tabla: "audiencias", label: "Audiencia", campo: (x) => `${x.titulo || ""} ${x.notas || ""}` },
   ];
   const out = [];
@@ -607,13 +626,35 @@ function obtenerResultadosBusquedaGlobal(termino) {
     const datos = JSON.parse(localStorage.getItem(f.tabla) || "[]");
     datos.forEach((d) => {
       const txt = f.campo(d);
-      const okTexto = txt.toLowerCase().includes(q.replace(/\\w+:[^\\s]+/g, "").trim());
+      const okTexto = txt.toLowerCase().includes(q.replace(/[\w-]+:[^\s]+/g, "").trim());
       const okTipo = !filtros.tipo || f.label.toLowerCase() === filtros.tipo;
       const okAsignado = !filtros.asignado || `${d.asignadoA || d.asignadosA || ""}`.toLowerCase().includes(filtros.asignado);
       const okVencida = !filtros.vencida || (filtros.vencida === "true" ? esVencida(d.fin || d.fecha, d.estado) : true);
+      const sinCliente = String(filtros.sincliente || "") === "true";
+      const fechaControl = d.fin || d.fechaFin || d.fecha || "";
+      const hoy = new Date().toISOString().slice(0, 10);
+      const venceHoy = String(filtros.vencehoy || "") === "true";
+      const usuario = JSON.parse(localStorage.getItem("usuarioActual") || "{}");
+      const nombreUsuario = String(usuario.nombre || "").toLowerCase();
+      const mias = String(filtros.mias || "") === "true";
+      const sinAccion = String(filtros.sinaccion || "") === "true";
+      const accionFiltro = String(filtros.accion || "").toLowerCase();
+      const idsTareas = JSON.parse(localStorage.getItem("expedientes") || "[]");
+      const exp = idsTareas.find((e) => e.id === d.expedienteId);
+      const clienteId = d.clienteId || exp?.clienteId || null;
+      const asignadosLista = []
+        .concat(d.asignadoA || [])
+        .concat(d.asignadosA || [])
+        .map((x) => String(x).toLowerCase());
+      const okSinCliente = !sinCliente || !clienteId;
+      const okVenceHoy = !venceHoy || String(fechaControl).slice(0, 10) === hoy;
+      const okMias = !mias || (nombreUsuario && asignadosLista.some((x) => x.includes(nombreUsuario)));
+      const okSinAccion = !sinAccion || !String(d.proximaAccion || "").trim();
+      const vencidaAccion = Boolean(fechaControl) && String(fechaControl).slice(0, 10) < hoy && !String(d.estado || "").toLowerCase().includes("termin");
+      const okAccion = !accionFiltro || (accionFiltro === "vencida" ? vencidaAccion : (accionFiltro === "sin-definir" ? !String(d.proximaAccion || "").trim() : true));
       const tags = Array.isArray(d.tags) ? d.tags.join(",").toLowerCase() : "";
       const okTag = !filtros.tag || tags.includes(filtros.tag);
-      if (okTexto && okTipo && okAsignado && okVencida && okTag) {
+      if (okTexto && okTipo && okAsignado && okVencida && okTag && okSinCliente && okVenceHoy && okMias && okSinAccion && okAccion) {
         out.push({ tipo: f.label, texto: txt.trim() || "(sin texto)", raw: d });
       }
     });
@@ -621,13 +662,14 @@ function obtenerResultadosBusquedaGlobal(termino) {
   return out.slice(0, 15);
 }
 
+
 function renderQuickPanelResultado(r) {
   const raw = r?.raw || {};
   if (r?.tipo === "Cliente") {
     return `<p><strong>Nombre:</strong> ${raw.nombre || "-"}</p><p><strong>Correo:</strong> ${raw.correo || "-"}</p><p><strong>Teléfono:</strong> ${raw.telefono || "-"}</p>
     <button class="quickpanel-edit-btn" onclick="if (typeof editarCliente==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarCliente(${raw.id}); mostrarModal(document.getElementById('modalFormulario'));}">✏️ Editar</button>`;
   }
-  if (r?.tipo === "Gestión") {
+  if (r?.tipo === "Tarea") {
     return `<h4>Resumen</h4><p><strong>Título:</strong> ${raw.titulo || "-"}</p><p><strong>Estado:</strong> ${raw.estado || "-"}</p><p><strong>Fecha fin:</strong> ${raw.fin || "-"}</p><h4>Próxima acción</h4><p>${raw.proximaAccion || "-"}</p><h4>Historial</h4><p>Creado: ${raw.created_at ? formatearCorta(raw.created_at) : "-"}</p>
     <button class="quickpanel-edit-btn" onclick="if (typeof editarTarea==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarTarea(${raw.id}); mostrarModal(document.getElementById('ModalFormularioTarea'));}">✏️ Editar</button>`;
   }
@@ -658,8 +700,6 @@ function normalizarTipoDetalle(tipo, data = {}) {
   const mapa = {
     tarea: "tarea",
     tareas: "tarea",
-    gestion: "tarea",
-    gestiones: "tarea",
     "tarea_dia": "tarea_dia",
     "tareas_dia": "tarea_dia",
     "tarea-interna": "tarea_interna",
@@ -697,7 +737,7 @@ function mostrarDetalleEntidad(tipo, data) {
        <h4>Próxima acción</h4><p>${data.proximaAccion || "-"}</p>
        <h4>Acciones rápidas</h4>
        <div class="quick-panel-actions">
-         <button class="mini-boton" onclick="cambiarVista('hoy')">Ir a hoy</button>
+         <button class="mini-boton" onclick="cambiarVista('dashboard')">Ir a dashboard</button>
          <button class="quickpanel-edit-btn" onclick="if (typeof editarTarea==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarTarea(${data.id}); mostrarModal(document.getElementById('ModalFormularioTarea'));}">✏️ Editar</button>
        </div>`
     );
@@ -740,6 +780,47 @@ function mostrarDetalleEntidad(tipo, data) {
     return;
   }
   if (tipoNorm === "cliente") {
+    const expedientes = JSON.parse(localStorage.getItem("expedientes") || "[]");
+    const expedienteIds = new Set(
+      expedientes
+        .filter((e) => e.clienteId === data.id)
+        .map((e) => e.id)
+    );
+    const tareasGestionArchivadas = JSON.parse(localStorage.getItem("tareasArchivadas") || "[]");
+    const tareasDiaArchivadas = JSON.parse(localStorage.getItem("tareasDiaArchivadas") || "[]");
+    const audienciasArchivadas = JSON.parse(localStorage.getItem("audienciasArchivadas") || "[]");
+    const historialTareas = tareasGestionArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.titulo || t.texto || "Sin título",
+        fecha: t.archivadoEn || t.fin || t.fechaFin || t.created_at || "",
+      }));
+    const historialTareasDia = tareasDiaArchivadas
+      .filter((t) => t.clienteId === data.id || expedienteIds.has(t.expedienteId))
+      .map((t) => ({
+        tipo: "Tarea",
+        titulo: t.texto || "Tarea del día",
+        fecha: t.archivadoEn || t.fechaFin || t.creadoEn || "",
+      }));
+    const historialAudiencias = audienciasArchivadas
+      .filter((a) => a.clienteId === data.id || expedienteIds.has(a.expedienteId))
+      .map((a) => ({
+        tipo: "Audiencia",
+        titulo: a.titulo || "Sin título",
+        fecha: a.archivadoEn || a.fecha || "",
+      }));
+    const historial = [...historialTareas, ...historialTareasDia, ...historialAudiencias]
+      .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+      .slice(0, 12);
+    const historialHtml = historial.length
+      ? `<ul class="historial-lista">${historial
+          .map(
+            (h) =>
+              `<li><span class="historial-tipo">${h.tipo}</span><span>${h.titulo}</span><small>${h.fecha ? formatearCorta(h.fecha) : "-"}</small></li>`
+          )
+          .join("")}</ul>`
+      : `<p>Sin tareas/audiencias finalizadas asociadas.</p>`;
     abrirQuickPanel(
       `Cliente: ${data.nombre || "Sin nombre"}`,
       `<h4>Resumen</h4><p><strong>Correo:</strong> ${data.correo || "-"}</p>
@@ -747,6 +828,8 @@ function mostrarDetalleEntidad(tipo, data) {
        <p><strong>Dirección:</strong> ${data.direccion || "-"}</p>
        <p><strong>RUT:</strong> ${data.rut || "-"}</p>
        <p><strong>Notas:</strong> ${data.confidencial || "-"}</p>
+       <h4>Historial reciente</h4>
+       ${historialHtml}
        <button class="quickpanel-edit-btn" onclick="if (typeof editarCliente==='function'){document.getElementById('quickPanel')?.classList.add('oculto'); editarCliente(${data.id}); mostrarModal(document.getElementById('modalFormulario'));}">✏️ Editar</button>`
     );
     return;
@@ -776,7 +859,7 @@ function actualizarKpiResumen() {
   const tareasDiaArchivadas = JSON.parse(localStorage.getItem("tareasDiaArchivadas") || "[]");
   const audiencias = JSON.parse(localStorage.getItem("audiencias") || "[]");
   const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
-  const gestionesUnificadas = tareasGestion.length + tareasDia.length;
+  const tareasUnificadas = tareasGestion.length + tareasDia.length;
   const vencidasGestion = tareasGestion.filter((t) => esVencida(t.fin, t.estado)).length;
   const vencidasDia = tareasDia.filter((t) => esVencida(t.fechaFin, "pendiente")).length;
   const vencidasInternas = tareasInternas.filter((t) => esVencida(t.fechaFin, "pendiente")).length;
@@ -784,7 +867,7 @@ function actualizarKpiResumen() {
   const terminadas = tareasGestionArchivadas.length + tareasDiaArchivadas.length;
   el.innerHTML = `
     <button class="kpi-item" data-kpi="clientes"><strong>Clientes</strong><br>${clientes.length}</button>
-    <button class="kpi-item" data-kpi="gestiones"><strong>Gestiones</strong><br>${gestionesUnificadas}</button>
+    <button class="kpi-item" data-kpi="tareas"><strong>Tareas</strong><br>${tareasUnificadas}</button>
     <button class="kpi-item" data-kpi="internas"><strong>Internas</strong><br>${tareasInternas.length}</button>
     <button class="kpi-item" data-kpi="vencidas"><strong>Vencidas</strong><br>${vencidas}</button>
     <button class="kpi-item" data-kpi="terminadas"><strong>Terminadas</strong><br>${terminadas}</button>
@@ -798,7 +881,7 @@ function actualizarKpiResumen() {
         cambiarVista("hoy");
       } else if (k === "internas") {
         cambiarVista("internas");
-      } else if (k === "gestiones") {
+      } else if (k === "tareas") {
         cambiarVista("tareas");
       } else if (k === "audiencias") {
         cambiarVista("audiencias");
@@ -806,7 +889,7 @@ function actualizarKpiResumen() {
         cambiarVista("clientes");
       } else if (k === "terminadas") {
         const terminadasGestion = JSON.parse(localStorage.getItem("tareasArchivadas") || "[]")
-          .map((t) => ({ tipo: "Gestión", titulo: t.titulo || t.descripcion || "Sin título", fecha: t.archivadoEn || t.fin || "-" }));
+          .map((t) => ({ tipo: "Tarea", titulo: t.titulo || t.descripcion || "Sin título", fecha: t.archivadoEn || t.fin || "-" }));
         const terminadasDia = JSON.parse(localStorage.getItem("tareasDiaArchivadas") || "[]")
           .map((t) => ({ tipo: "Tarea día", titulo: t.texto || "Sin título", fecha: t.archivadoEn || t.fechaFin || "-" }));
         const listaTerm = [...terminadasGestion, ...terminadasDia]
@@ -900,7 +983,17 @@ function setSelectValue(select, value) {
   }
 }
 
+const GENERADOR_EXTERNO_URL = "https://gjabogados.cl/generador";
+
+function abrirGeneradorExterno() {
+  window.open(GENERADOR_EXTERNO_URL, "_blank", "noopener,noreferrer");
+}
+
 function cambiarVista(vistaId) {
+  if (vistaId === "generador") {
+    abrirGeneradorExterno();
+    return;
+  }
   const vistaMostrada = document.getElementById(`vista-${vistaId}`);
   if (!vistaMostrada) {
     vistaId = "dashboard";
@@ -923,8 +1016,6 @@ function cambiarVista(vistaId) {
     cargarAudiencias();
   } else if (vistaId === "hoy") {
     renderVistaHoy();
-  } else if (vistaId === "generador") {
-    montarGeneradorNativo();
   }
 
   // 2) Ocultamos todas las secciones
@@ -936,8 +1027,12 @@ function cambiarVista(vistaId) {
   vistaFinal.classList.remove("oculto");
   vistaActual = vistaId;
 
-  const botonActivo = document.querySelector(`.tab[data-tab="${vistaId}"]`);
-  if (botonActivo) botonActivo.classList.add("active");
+  document
+    .querySelectorAll(`.tab[data-tab="${vistaId}"]`)
+    .forEach((botonActivo) => botonActivo.classList.add("active"));
+  if (typeof window.actualizarKPIsWorkspace === "function") {
+    window.actualizarKPIsWorkspace();
+  }
 }
 
 let generadorNativoMontado = false;
@@ -1066,13 +1161,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   const syncStatus = document.getElementById("syncStatus");
   const busquedaGlobalInput = document.getElementById("busquedaGlobalInput");
   const busquedaGlobalResultados = document.getElementById("busquedaGlobalResultados");
+  const quickFilterBtns = document.querySelectorAll("[data-quick-filter]");
   const quickPanel = document.getElementById("quickPanel");
   const quickPanelCerrar = document.getElementById("quickPanelCerrar");
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
   const hoyResponsableFiltro = document.getElementById("hoyResponsableFiltro");
   const hoyExportSemanal = document.getElementById("hoyExportSemanal");
+  const syncAudienciasGoogleBtn = document.getElementById("syncAudienciasGoogleBtn");
   const sidebar = document.querySelector(".sidebar");
   const toggleSidebarBtn = document.getElementById("toggleSidebar");
+  const quickActionFab = document.getElementById("quickActionFab");
+  const quickActionMenu = document.getElementById("quickActionMenu");
+  const qaNuevaTarea = document.getElementById("qaNuevaTarea");
+  const qaNuevoCliente = document.getElementById("qaNuevoCliente");
+  const qaNuevaAudiencia = document.getElementById("qaNuevaAudiencia");
+  const qaBuscar = document.getElementById("qaBuscar");
+  const commandPalette = document.getElementById("commandPalette");
+  const commandPaletteInput = document.getElementById("commandPaletteInput");
+  const commandPaletteResults = document.getElementById("commandPaletteResults");
   iniciarSincronizacionTemaGeneradorNativo();
   window.updateSyncStatus = (state = "syncing", text = "") => {
     if (!syncStatus) return;
@@ -1175,6 +1281,99 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (quickPanelCerrar && quickPanel) {
     quickPanelCerrar.addEventListener("click", () => quickPanel.classList.add("oculto"));
   }
+
+  const comandos = [
+    { label: "Ir a Dashboard", vista: "dashboard" },
+    { label: "Abrir Audiencias", vista: "audiencias" },
+    { label: "Abrir Tareas", vista: "tareas" },
+    { label: "Abrir Clientes", vista: "clientes" },
+    { label: "Abrir Documentos", vista: "generador" },
+    { label: "Abrir Operación interna", vista: "internas" },
+    { label: "Mostrar clientes incompletos", accion: "clientes_incompletos" },
+  ];
+
+  const actualizarKPIsWorkspace = () => {
+    const tareasDia = JSON.parse(localStorage.getItem("tareasDia") || "[]");
+    const audiencias = JSON.parse(localStorage.getItem("audiencias") || "[]");
+    const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const vencenHoy = tareasDia.filter((t) => t.fechaFin && parseFechaLocal(t.fechaFin)?.getTime() === hoy.getTime()).length;
+    const riesgoAlto = tareasDia.filter((t) => t.prioridad === "alta").length;
+    const carga = tareasDia.length ? Math.min(100, Math.round((riesgoAlto / tareasDia.length) * 100)) : 0;
+    const setText = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+    setText("kpiVencimientosHoy", String(vencenHoy));
+    setText("kpiRiesgoAlto", String(riesgoAlto));
+    setText("kpiCargaEquipo", `${carga}%`);
+    setText("kpiClientesActivos", String(Math.max(audiencias.length, clientes.length)));
+  };
+  window.actualizarKPIsWorkspace = actualizarKPIsWorkspace;
+  actualizarKPIsWorkspace();
+
+  function abrirCommandPalette() {
+    if (!commandPalette || !commandPaletteInput || !commandPaletteResults) return;
+    commandPalette.classList.remove("oculto");
+    commandPaletteInput.value = "";
+    commandPaletteResults.innerHTML = comandos
+      .map((c) => `<button type="button" ${c.vista ? `data-vista="${c.vista}"` : `data-accion="${c.accion || ""}"`}>${c.label}</button>`)
+      .join("");
+    commandPaletteInput.focus();
+  }
+  function cerrarCommandPalette() {
+    commandPalette?.classList.add("oculto");
+  }
+
+  if (commandPalette && commandPaletteInput && commandPaletteResults) {
+    commandPalette.addEventListener("click", (e) => {
+      if (e.target === commandPalette) cerrarCommandPalette();
+    });
+    commandPaletteResults.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const vista = btn.getAttribute("data-vista");
+      const accion = btn.getAttribute("data-accion");
+      if (vista) {
+        localStorage.setItem("ultimaVista", vista);
+        cambiarVista(vista);
+        cerrarCommandPalette();
+        return;
+      }
+      if (accion === "clientes_incompletos") {
+        busquedaGlobalInput.value = "tipo:cliente";
+        busquedaGlobalInput.dispatchEvent(new Event("input"));
+        const buscarClientes = document.getElementById("buscarClientes");
+        if (buscarClientes) {
+          buscarClientes.value = "";
+          buscarClientes.dispatchEvent(new Event("input"));
+        }
+        if (window.filtrarClientesIncompletos) window.filtrarClientesIncompletos();
+        cerrarCommandPalette();
+      }
+    });
+    commandPaletteInput.addEventListener("input", () => {
+      const q = commandPaletteInput.value.trim().toLowerCase();
+      const filtrados = comandos.filter((c) => c.label.toLowerCase().includes(q));
+      commandPaletteResults.innerHTML = filtrados
+        .map((c) => `<button type="button" ${c.vista ? `data-vista="${c.vista}"` : `data-accion="${c.accion || ""}"`}>${c.label}</button>`)
+        .join("") || `<p style="padding:12px;">Sin resultados</p>`;
+    });
+  }
+
+  if (quickActionFab && quickActionMenu) {
+    quickActionFab.addEventListener("click", () => quickActionMenu.classList.toggle("oculto"));
+    document.addEventListener("click", (e) => {
+      if (quickActionMenu.classList.contains("oculto")) return;
+      if (quickActionMenu.contains(e.target) || quickActionFab.contains(e.target)) return;
+      quickActionMenu.classList.add("oculto");
+    });
+  }
+  qaNuevaTarea?.addEventListener("click", () => document.getElementById("nuevaTareaDiaBtnDashboard")?.click());
+  qaNuevoCliente?.addEventListener("click", () => document.getElementById("abrirFormulario")?.click());
+  qaNuevaAudiencia?.addEventListener("click", () => document.getElementById("nuevaAudienciaBtn")?.click());
+  qaBuscar?.addEventListener("click", abrirCommandPalette);
   if (quickPanel) {
     document.addEventListener("click", (event) => {
       if (quickPanel.classList.contains("oculto")) return;
@@ -1190,6 +1389,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       quickPanel.style.height = `${window.innerHeight}px`;
     });
   }
+
+  
+  quickFilterBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const q = btn.getAttribute("data-quick-filter") || "";
+      if (!q || !busquedaGlobalInput) return;
+      busquedaGlobalInput.value = q;
+      busquedaGlobalInput.dispatchEvent(new Event("input"));
+    });
+  });
 
   const observerModales = new MutationObserver(() => {
     ajustarPosicionModalesVisibles();
@@ -1305,28 +1514,118 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tag = (e.target?.tagName || "").toLowerCase();
     const editando = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
     if (editando) return;
-    if (e.key === "/") {
+    if ((e.shiftKey && e.key.toLowerCase() === "f") || (e.shiftKey && e.key === "?")) {
       e.preventDefault();
       busquedaGlobalInput?.focus();
       return;
     }
-    if (e.key.toLowerCase() === "g") {
+    if (e.shiftKey && e.code === "Space") {
+      e.preventDefault();
+      abrirCommandPalette();
+      return;
+    }
+    if (e.key === "Escape") {
+      cerrarCommandPalette();
+    }
+    if (e.shiftKey && e.key.toLowerCase() === "d") {
       localStorage.setItem("ultimaVista", "dashboard");
       cambiarVista("dashboard");
       return;
     }
-    if (e.key.toLowerCase() === "h") {
-      localStorage.setItem("ultimaVista", "hoy");
-      cambiarVista("hoy");
-      return;
-    }
-    if (e.key.toLowerCase() === "n") {
+    if (e.shiftKey && e.key.toLowerCase() === "n") {
       document.getElementById("nuevaTareaDiaBtnDashboard")?.click();
     }
-    if (e.key.toLowerCase() === "c") {
+    if (e.shiftKey && e.key.toLowerCase() === "c") {
       document.getElementById("abrirFormulario")?.click();
     }
   });
+
+  async function ejecutarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleEnCurso) return;
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      const cambios = (resp?.audiencias_upserted || 0) + (resp?.audiencias_deleted || 0);
+      if (cambios > 0 && typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+    } catch (error) {
+      console.warn("Auto-sync Google Calendar falló:", error);
+    } finally {
+      autoSyncGoogleEnCurso = false;
+    }
+  }
+
+  window.notificarAsignacionEmail = async (task) => {
+    if (!window.supabaseSync?.sendTaskAssignmentEmail) return;
+    try {
+      await window.supabaseSync.sendTaskAssignmentEmail(task);
+    } catch (error) {
+      console.warn("No se pudo enviar correo de asignación:", error);
+    }
+  };
+
+  async function ejecutarRecordatorioEmailDiario() {
+    if (!window.supabaseSync?.sendTaskDueReminders) return;
+    const hoy = new Date().toISOString().slice(0, 10);
+    const llave = `mail_reminder_last_run_${hoy}`;
+    if (localStorage.getItem(llave) === "1") return;
+    try {
+      await window.supabaseSync.sendTaskDueReminders();
+      localStorage.setItem(llave, "1");
+    } catch (error) {
+      console.warn("No se pudo ejecutar recordatorio diario por correo:", error);
+    }
+  }
+
+  async function sincronizarGoogleCalendarManual(boton = null) {
+    if (!window.supabaseSync?.syncGoogleCalendarAudiencias) {
+      mostrarNotificacion("Sincronización Google Calendar no disponible", "#D7263D");
+      return null;
+    }
+    if (autoSyncGoogleEnCurso) {
+      mostrarNotificacion("Sincronización en curso, intenta nuevamente en unos segundos", "#FF9800");
+      return null;
+    }
+    const labelOriginal = boton ? boton.innerHTML : "";
+    if (boton) {
+      boton.disabled = true;
+      boton.innerHTML = "<i class='fa-sharp fa-solid fa-spinner fa-spin'></i> Sincronizando...";
+    }
+    autoSyncGoogleEnCurso = true;
+    try {
+      const resp = await window.supabaseSync.syncGoogleCalendarAudiencias();
+      if (typeof window.refrescarDatos === "function") {
+        window.refrescarDatos(["audiencias", "dashboard"]);
+      }
+      mostrarNotificacion(
+        `Google Calendar sincronizado: ${resp?.audiencias_upserted || 0} audiencias cargadas.`,
+        "#00A36C"
+      );
+      return resp;
+    } catch (error) {
+      console.error("Error sincronizando Google Calendar:", error);
+      mostrarNotificacion("No se pudo sincronizar Google Calendar", "#D7263D");
+      return null;
+    } finally {
+      autoSyncGoogleEnCurso = false;
+      if (boton) {
+        boton.disabled = false;
+        boton.innerHTML = labelOriginal;
+      }
+    }
+  }
+
+  function iniciarAutoSyncGoogleCalendar() {
+    if (autoSyncGoogleInterval || !window.supabaseSync?.syncGoogleCalendarAudiencias) return;
+    ejecutarAutoSyncGoogleCalendar();
+    autoSyncGoogleInterval = setInterval(ejecutarAutoSyncGoogleCalendar, 60 * 1000);
+  }
+
+  if (syncAudienciasGoogleBtn) {
+    syncAudienciasGoogleBtn.addEventListener("click", () => sincronizarGoogleCalendarManual(syncAudienciasGoogleBtn));
+  }
 
   aplicarConfiguracion();
 
@@ -1368,10 +1667,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       supabaseSync.subscribeNotificaciones();
     }
     refrescarDatos();
+      actualizarKPIsWorkspace();
       cambiarVista(vistaActual);
       if (typeof actualizarDashboard === "function") {
         actualizarDashboard();
       }
+      iniciarAutoSyncGoogleCalendar();
+      ejecutarRecordatorioEmailDiario();
     }
 
     let usuarioActual = null;
@@ -1436,6 +1738,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // que indica qué vista debe mostrarse cuando se hace clic.
     tab.addEventListener("click", () => {
       const vistaSeleccionada = tab.getAttribute("data-tab"); // extrae "dashboard", "clientes", etc.
+        if (vistaSeleccionada === "generador") {
+          abrirGeneradorExterno();
+          return;
+        }
         localStorage.setItem("ultimaVista", vistaSeleccionada);
         cambiarVista(vistaSeleccionada);
     });
@@ -1447,8 +1753,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const abrirGeneradorDashboard = document.getElementById("abrirGeneradorDashboard");
   if (abrirGeneradorDashboard) {
     abrirGeneradorDashboard.addEventListener("click", () => {
-      localStorage.setItem("ultimaVista", "generador");
-      cambiarVista("generador");
+      abrirGeneradorExterno();
     });
   }
 
@@ -1491,6 +1796,63 @@ document.addEventListener("DOMContentLoaded", async () => {
   const botonCerrar = document.getElementById("cerrarSesion");
   if (botonCerrar) {
     botonCerrar.addEventListener("click", cerrarSesion);
+  }
+
+  const botonPresentacion = document.getElementById("iniciarPresentacion");
+  const vistasPresentacion = ["tareas", "audiencias", "internas"];
+  let timerPresentacion = null;
+  let idxPresentacion = 0;
+
+  function actualizarBotonPresentacion(activa) {
+    if (!botonPresentacion) return;
+    botonPresentacion.innerHTML = activa
+      ? "<i class='fa-sharp fa-solid fa-circle-stop'></i><span> Salir presentación</span>"
+      : "<i class='fa-sharp fa-solid fa-display'></i><span> Presentación</span>";
+  }
+
+  function desactivarPresentacion(forzarExitFullscreen = true) {
+    if (timerPresentacion) {
+      clearInterval(timerPresentacion);
+      timerPresentacion = null;
+    }
+    document.body.classList.remove("presentacion-mode");
+    actualizarBotonPresentacion(false);
+    if (forzarExitFullscreen && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  async function activarPresentacion() {
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {
+      mostrarNotificacion("No se pudo activar pantalla completa automáticamente", "#FF9800");
+    }
+    document.body.classList.add("presentacion-mode");
+    idxPresentacion = 0;
+    cambiarVista(vistasPresentacion[idxPresentacion]);
+    timerPresentacion = setInterval(() => {
+      idxPresentacion = (idxPresentacion + 1) % vistasPresentacion.length;
+      cambiarVista(vistasPresentacion[idxPresentacion]);
+    }, 12000);
+    actualizarBotonPresentacion(true);
+  }
+
+  if (botonPresentacion) {
+    botonPresentacion.addEventListener("click", async () => {
+      if (timerPresentacion) {
+        desactivarPresentacion();
+      } else {
+        await activarPresentacion();
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement && timerPresentacion) {
+        desactivarPresentacion(false);
+      }
+    });
   }
 
   const modalAlerta = document.getElementById("modalAlerta");
@@ -1561,12 +1923,198 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (btnConfig && modalConfig) {
     const cerrarConfig = document.getElementById("cerrarModalConfiguracion");
     const guardarConfig = document.getElementById("guardarConfiguracion");
+    const exportarJsonLocalBtn = document.getElementById("exportarJsonLocalBtn");
+    const importarJsonLocalBtn = document.getElementById("importarJsonLocalBtn");
+    const importarJsonLocalInput = document.getElementById("importarJsonLocalInput");
+    const sincronizarGoogleCalendarBtn = document.getElementById("sincronizarGoogleCalendarBtn");
+    const prefsRecordatorioUsers = document.getElementById("prefsRecordatorioUsers");
+    const guardarPrefsRecordatorioBtn = document.getElementById("guardarPrefsRecordatorioBtn");
+    const tablasSync = [
+      { table: "clientes", key: "clientes" },
+      { table: "tareas", key: "tareas" },
+      { table: "gestionesarchivadas", key: "tareasArchivadas" },
+      { table: "diario", key: "tareasDia" },
+      { table: "diarioarchivadas", key: "tareasDiaArchivadas" },
+      { table: "tareasinternas", key: "tareasInternas" },
+      { table: "comentarios_clientes", key: "comentariosClientes" },
+      { table: "comentarios_tareas", key: "comentariosTareas" },
+      { table: "audiencias", key: "audiencias" },
+      { table: "audienciasarchivadas", key: "audienciasArchivadas" },
+      { table: "notificaciones", key: "notificaciones" },
+    ];
+
+    const hashEmailAId = (email) => {
+      let h = 0;
+      const s = String(email || "").toLowerCase();
+      for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return Math.abs(h) + 1000;
+    };
+
+    async function cargarPreferenciasRecordatorioUI() {
+      if (!prefsRecordatorioUsers) return;
+      prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#64748b'>Cargando usuarios...</p>";
+      try {
+        if (window.supabaseSync?.pullTabla) {
+          await window.supabaseSync.pullTabla("user_notification_prefs");
+        }
+        const prefs = JSON.parse(localStorage.getItem("user_notification_prefs") || "[]");
+        const mapPrefs = new Map(
+          prefs
+            .filter((x) => x && x.email)
+            .map((x) => [String(x.email).toLowerCase(), x])
+        );
+        const users = window.supabaseAuth?.fetchUsers ? await window.supabaseAuth.fetchUsers() : [];
+        if (!users.length) {
+          prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#64748b'>No hay usuarios para configurar.</p>";
+          return;
+        }
+        const html = users
+          .map((u) => {
+            const email = String(u.email || "").toLowerCase();
+            const pref = mapPrefs.get(email) || {};
+            const h = Number.isFinite(pref.reminderHour) ? pref.reminderHour : "";
+            const m = Number.isFinite(pref.reminderMinute) ? pref.reminderMinute : "";
+            const channel = pref.reminderChannel || "both";
+            return `
+              <div class="pref-rem-row" data-email="${email}">
+                <label>${u.nombre || email}<br><small>${email}</small></label>
+                <select class="pref-hour"><option value="">Global</option>${Array.from({length:24},(_,i)=>`<option value="${i}" ${String(i)===String(h)?"selected":""}>${String(i).padStart(2,"0")}</option>`).join("")}</select>
+                <select class="pref-minute"><option value="">Global</option>${Array.from({length:60},(_,i)=>`<option value="${i}" ${String(i)===String(m)?"selected":""}>${String(i).padStart(2,"0")}</option>`).join("")}</select>
+                <select class="pref-channel">
+                  <option value="both" ${channel==="both"?"selected":""}>Email + WhatsApp</option>
+                  <option value="email" ${channel==="email"?"selected":""}>Solo Email</option>
+                  <option value="whatsapp" ${channel==="whatsapp"?"selected":""}>Solo WhatsApp</option>
+                  <option value="none" ${channel==="none"?"selected":""}>Sin recordatorio</option>
+                </select>
+              </div>
+            `;
+          })
+          .join("");
+        prefsRecordatorioUsers.innerHTML = html;
+      } catch (e) {
+        console.error("No se pudo cargar preferencias de recordatorio:", e);
+        prefsRecordatorioUsers.innerHTML = "<p style='font-size:.9rem;color:#b91c1c'>No se pudieron cargar las preferencias.</p>";
+      }
+    }
+
+    async function guardarPreferenciasRecordatorioUI() {
+      if (!prefsRecordatorioUsers || !window.supabaseSync?.pushRegistro) return;
+      const rows = Array.from(prefsRecordatorioUsers.querySelectorAll(".pref-rem-row"));
+      let ok = true;
+      for (const row of rows) {
+        const email = String(row.dataset.email || "").toLowerCase();
+        if (!email) continue;
+        const hourValue = row.querySelector(".pref-hour")?.value;
+        const minuteValue = row.querySelector(".pref-minute")?.value;
+        const channel = row.querySelector(".pref-channel")?.value || "both";
+        const payload = {
+          id: hashEmailAId(email),
+          email,
+          reminderHour: hourValue === "" ? null : parseInt(hourValue, 10),
+          reminderMinute: minuteValue === "" ? null : parseInt(minuteValue, 10),
+          reminderChannel: channel,
+          updatedAt: new Date().toISOString(),
+        };
+        const saved = await window.supabaseSync.pushRegistro("user_notification_prefs", payload);
+        if (!saved) ok = false;
+      }
+      mostrarNotificacion(
+        ok ? "Preferencias de recordatorio guardadas" : "Algunas preferencias no se pudieron guardar",
+        ok ? "#00A36C" : "#FF9800"
+      );
+    }
+
+    function construirBackupLocal() {
+      const data = {};
+      tablasSync.forEach(({ key }) => {
+        data[key] = JSON.parse(localStorage.getItem(key) || "[]");
+      });
+      return {
+        schema: "abogapp-local-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        exportedBy: JSON.parse(localStorage.getItem("usuarioActual") || "null")?.usuario || "desconocido",
+        data,
+      };
+    }
+
+    async function sincronizarImportacionConCpanel() {
+      if (!window.supabaseSync) return true;
+      let ok = true;
+      for (const { table } of tablasSync) {
+        const res = await window.supabaseSync.pushTabla(table);
+        if (!res) ok = false;
+      }
+      return ok;
+    }
+
+    function normalizarTexto(v) {
+      return String(v || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function claveDedupePorNombre(key, item) {
+      if (!item || typeof item !== "object") return "";
+      if (key === "clientes") return `nombre:${normalizarTexto(item.nombre)}`;
+      if (key === "audiencias" || key === "audienciasArchivadas") {
+        return `titulo:${normalizarTexto(item.titulo)}`;
+      }
+      if (
+        key === "tareas" ||
+        key === "tareasArchivadas" ||
+        key === "tareasDia" ||
+        key === "tareasDiaArchivadas" ||
+        key === "tareasInternas"
+      ) {
+        return `tarea:${normalizarTexto(item.titulo || item.texto)}`;
+      }
+      return "";
+    }
+
+    function fusionarColeccion(key, actuales, importados) {
+      const base = Array.isArray(actuales) ? actuales.slice() : [];
+      const mapa = new Map();
+      base.forEach((row, idx) => {
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":")) {
+          mapa.set(claveNombre, idx);
+          return;
+        }
+        if (row && typeof row === "object" && row.id !== undefined && row.id !== null) {
+          mapa.set(`id:${row.id}`, idx);
+        }
+      });
+
+      (Array.isArray(importados) ? importados : []).forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const claveNombre = claveDedupePorNombre(key, row);
+        if (claveNombre && !claveNombre.endsWith(":") && mapa.has(claveNombre)) {
+          base[mapa.get(claveNombre)] = row;
+          return;
+        }
+        const claveId =
+          row.id !== undefined && row.id !== null ? `id:${row.id}` : "";
+        if (claveId && mapa.has(claveId)) {
+          base[mapa.get(claveId)] = row;
+          return;
+        }
+        const pos = base.push(row) - 1;
+        if (claveNombre && !claveNombre.endsWith(":")) mapa.set(claveNombre, pos);
+        else if (claveId) mapa.set(claveId, pos);
+      });
+      return base;
+    }
+
     btnConfig.addEventListener("click", () => {
       document.getElementById("configRadio").value = configuracion.radius;
       document.getElementById("configTema").value = configuracion.tema;
       document.getElementById("configFuente").value = configuracion.fuente;
       document.getElementById("configFormatoFecha").value = configuracion.formatoFecha;
       document.getElementById("configFormatoHora").value = configuracion.formatoHora;
+      cargarPreferenciasRecordatorioUI();
       mostrarModal(modalConfig);
     });
     if (cerrarConfig) cerrarConfig.addEventListener("click", () => modalConfig.classList.add("oculto"));
@@ -1610,6 +2158,75 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (guardarConfig) {
       guardarConfig.addEventListener("click", () => {
         modalConfig.classList.add("oculto");
+      });
+    }
+
+    if (exportarJsonLocalBtn) {
+      exportarJsonLocalBtn.addEventListener("click", () => {
+        const backup = construirBackupLocal();
+        const blob = new Blob([JSON.stringify(backup, null, 2)], {
+          type: "application/json;charset=utf-8",
+        });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `abogapp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        mostrarNotificacion("JSON local exportado correctamente", "#00A36C");
+      });
+    }
+
+    if (importarJsonLocalBtn && importarJsonLocalInput) {
+      importarJsonLocalBtn.addEventListener("click", () => importarJsonLocalInput.click());
+      importarJsonLocalInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+          const raw = await file.text();
+          const parsed = JSON.parse(raw);
+          const payload = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+          if (!payload || typeof payload !== "object") {
+            mostrarNotificacion("JSON inválido para importación", "#D7263D");
+            return;
+          }
+          if (!confirm("Esto combinará el JSON con la base local (solo reemplaza si cliente/audiencia/tarea tienen el mismo nombre) y luego sincronizará con cPanel. ¿Deseas continuar?")) {
+            return;
+          }
+          tablasSync.forEach(({ key }) => {
+            const value = payload[key];
+            if (Array.isArray(value)) {
+              const actuales = JSON.parse(localStorage.getItem(key) || "[]");
+              const fusionados = fusionarColeccion(key, actuales, value);
+              localStorage.setItem(key, JSON.stringify(fusionados));
+            }
+          });
+          const sincronizado = await sincronizarImportacionConCpanel();
+          if (typeof window.refrescarDatos === "function") {
+            window.refrescarDatos(["clientes", "tareasDia", "audiencias", "dashboard", "internas", "notificaciones"]);
+          }
+          mostrarNotificacion(
+            sincronizado
+              ? "JSON importado y sincronizado con cPanel"
+              : "JSON importado localmente, pero hubo errores al sincronizar cPanel",
+            sincronizado ? "#00A36C" : "#FF9800"
+          );
+        } catch (error) {
+          console.error("Error importando JSON local:", error);
+          mostrarNotificacion("No se pudo importar el JSON", "#D7263D");
+        } finally {
+          importarJsonLocalInput.value = "";
+        }
+      });
+    }
+
+    if (sincronizarGoogleCalendarBtn) {
+      sincronizarGoogleCalendarBtn.addEventListener("click", async () => {
+        await sincronizarGoogleCalendarManual(sincronizarGoogleCalendarBtn);
+      });
+    }
+    if (guardarPrefsRecordatorioBtn) {
+      guardarPrefsRecordatorioBtn.addEventListener("click", async () => {
+        await guardarPreferenciasRecordatorioUI();
       });
     }
   }
