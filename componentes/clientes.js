@@ -283,6 +283,7 @@ async function agregarComentario(id, nombre) {
 // Tipo: Función declarada
 // Descripción: Obtiene los clientes desde localStorage y los muestra en pantalla
 function cargarClientes() {
+  if (!lista) return;
   lista.innerHTML = "";
 
   const clientes = JSON.parse(localStorage.getItem("clientes")) || [];
@@ -642,4 +643,13 @@ window.mostrarTodosClientes = function () {
   cargarClientes();
 };
 
-cargarClientes();
+(async function inicializarClientes() {
+  try {
+    if (window.supabaseSync?.pullTabla) {
+      await window.supabaseSync.pullTabla("clientes");
+    }
+  } catch (_) {
+    // fallback local si falla sync remota
+  }
+  cargarClientes();
+})();
