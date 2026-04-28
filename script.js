@@ -1161,7 +1161,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const syncStatus = document.getElementById("syncStatus");
   const busquedaGlobalInput = document.getElementById("busquedaGlobalInput");
   const busquedaGlobalResultados = document.getElementById("busquedaGlobalResultados");
-  const quickFilterBtns = document.querySelectorAll("[data-quick-filter]");
   const quickPanel = document.getElementById("quickPanel");
   const quickPanelCerrar = document.getElementById("quickPanelCerrar");
   const hoyFiltros = document.querySelectorAll("[data-hoy-filtro]");
@@ -1391,15 +1390,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   
-  quickFilterBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const q = btn.getAttribute("data-quick-filter") || "";
-      if (!q || !busquedaGlobalInput) return;
-      busquedaGlobalInput.value = q;
-      busquedaGlobalInput.dispatchEvent(new Event("input"));
-    });
-  });
-
   const observerModales = new MutationObserver(() => {
     ajustarPosicionModalesVisibles();
   });

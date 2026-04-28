@@ -1596,7 +1596,6 @@ body:not(.dark-mode) #audienciasListaDashboard .audiencia-card.audiencia-verde {
 }
 .header-busqueda-global { position: relative; margin-top: 6px; }
 #busquedaGlobalInput { min-width: 260px; padding: 8px 10px; border-radius: 8px; border: 1px solid #cfd8dc; }
-.header-filtros-rapidos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .onboarding-switch { display: flex; gap: 8px; margin-bottom: 10px; }
 .onboarding-switch .activo { background: #e8f5e9; border-color: #4c8b6e; }
 .cliente-score { margin-left: 8px; font-size: 12px; color: #2e7d32; font-weight: 700; }
