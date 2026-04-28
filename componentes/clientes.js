@@ -23,6 +23,75 @@ let filtroCliente = "";
 
 let modoEdicion = false;         // BOOLEANO: indica si estamos editando un cliente
 let clienteEditandoId = null;    // ID del cliente que estamos editando
+let mostrarSoloIncompletos = false;
+let onboardingClienteModo = "rapido";
+
+function normalizarTelefonoCl(valor) {
+  const nums = String(valor || "").replace(/\D/g, "");
+  if (!nums) return "";
+  if (nums.startsWith("56")) return `+${nums}`;
+  if (nums.length === 9) return `+56${nums}`;
+  return `+${nums}`;
+}
+
+function formatearRut(rut) {
+  const limpio = String(rut || "").replace(/[^0-9kK]/g, "").toUpperCase();
+  if (limpio.length < 2) return "";
+  const cuerpo = limpio.slice(0, -1);
+  const dv = limpio.slice(-1);
+  return `${parseInt(cuerpo, 10).toLocaleString("es-CL")}-${dv}`;
+}
+
+function validarRutChileno(rut) {
+  const limpio = String(rut || "").replace(/[^0-9kK]/g, "").toUpperCase();
+  if (limpio.length < 2) return true;
+  const cuerpo = limpio.slice(0, -1);
+  const dv = limpio.slice(-1);
+  let suma = 0;
+  let multiplo = 2;
+  for (let i = cuerpo.length - 1; i >= 0; i--) {
+    suma += parseInt(cuerpo[i], 10) * multiplo;
+    multiplo = multiplo < 7 ? multiplo + 1 : 2;
+  }
+  const esperadoNum = 11 - (suma % 11);
+  const esperado = esperadoNum === 11 ? "0" : (esperadoNum === 10 ? "K" : String(esperadoNum));
+  return dv === esperado;
+}
+
+function scoreCompletitudCliente(cliente) {
+  const checks = [
+    Boolean(cliente.nombre && cliente.nombre.trim()),
+    Boolean(cliente.correo && cliente.correo !== "no indicado"),
+    Boolean(cliente.telefono && cliente.telefono !== "no indicado"),
+    Boolean(cliente.rut && cliente.rut !== "no indicado"),
+    Boolean(cliente.direccion && cliente.direccion !== "no indicado"),
+  ];
+  const expedientes = JSON.parse(localStorage.getItem("expedientes") || "[]");
+  const tareas = JSON.parse(localStorage.getItem("tareas") || "[]");
+  const tieneExp = expedientes.some((e) => Number(e.clienteId) === Number(cliente.id));
+  const tieneTarea = tareas.some((t) => {
+    if (Number(t.clienteId) === Number(cliente.id)) return true;
+    const exp = expedientes.find((e) => Number(e.id) === Number(t.expedienteId));
+    return Number(exp?.clienteId) === Number(cliente.id);
+  });
+  checks.push(tieneExp, tieneTarea);
+  const completos = checks.filter(Boolean).length;
+  return Math.round((completos / checks.length) * 100);
+}
+
+function generarChecklistIncorporacion(cliente) {
+  const expedientes = JSON.parse(localStorage.getItem("expedientes") || "[]");
+  const tareasDia = JSON.parse(localStorage.getItem("tareasDia") || "[]");
+  const items = [
+    ["Cliente creado", true],
+    ["Tarea asociada", expedientes.some((e) => Number(e.clienteId) === Number(cliente.id))],
+    ["Primera tarea creada", tareasDia.some((t) => Number(t.clienteId) === Number(cliente.id))],
+    ["Responsable asignado", Boolean(cliente.creadoPor)],
+    ["Próxima acción definida", tareasDia.some((t) => Number(t.clienteId) === Number(cliente.id) && String(t.proximaAccion || "").trim())],
+    ["Canal de notificación validado", Boolean((cliente.correo && cliente.correo !== "no indicado") || (cliente.telefono && cliente.telefono !== "no indicado"))],
+  ];
+  return `<h4>Checklist de incorporación</h4><ul>${items.map(([txt, ok]) => `<li>${ok ? "✅" : "⬜"} ${txt}</li>`).join("")}</ul>`;
+}
 
 function claseEstadoExp(tramite) {
   switch (tramite) {
@@ -214,6 +283,7 @@ async function agregarComentario(id, nombre) {
 // Tipo: Función declarada
 // Descripción: Obtiene los clientes desde localStorage y los muestra en pantalla
 function cargarClientes() {
+  if (!lista) return;
   lista.innerHTML = "";
 
   const clientes = JSON.parse(localStorage.getItem("clientes")) || [];
@@ -222,7 +292,11 @@ function cargarClientes() {
 
   const filtrados = clientes
     .filter(c => c.nombre.toLowerCase().includes(filtroCliente.toLowerCase()))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+    .filter(c => !mostrarSoloIncompletos || scoreCompletitudCliente(c) < 100)
+    .sort((a, b) => {
+      if (mostrarSoloIncompletos) return scoreCompletitudCliente(a) - scoreCompletitudCliente(b);
+      return a.nombre.localeCompare(b.nombre);
+    });
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / CLIENTES_POR_PAGINA));
   if (paginaClientes > totalPaginas) paginaClientes = totalPaginas;
@@ -240,7 +314,7 @@ function cargarClientes() {
 
     li.innerHTML = `
       <div class="cliente-row"><strong>${cliente.nombre}</strong>${drive}</div>
-      <div class="cliente-contacto">${cliente.correo} | ${cliente.telefono}</div>
+      <div class="cliente-contacto">${cliente.correo} | ${cliente.telefono} <span class="cliente-score">${scoreCompletitudCliente(cliente)}% completo</span></div>
       <button class="boton-eliminar" data-id="${cliente.id}">🗑 Eliminar</button>
     `;
 
@@ -300,6 +374,27 @@ document.getElementById("modalCerrar").addEventListener("click", () => {
   resetCotizaciones();
 });
 
+const clienteCamposCompletos = document.getElementById("clienteCamposCompletos");
+const clientePasoRapidoBtn = document.getElementById("clientePasoRapidoBtn");
+const clientePasoCompletoBtn = document.getElementById("clientePasoCompletoBtn");
+
+function aplicarModoOnboardingCliente() {
+  if (!clienteCamposCompletos) return;
+  const rapido = onboardingClienteModo === "rapido";
+  clienteCamposCompletos.style.display = rapido ? "none" : "block";
+  clientePasoRapidoBtn?.classList.toggle("activo", rapido);
+  clientePasoCompletoBtn?.classList.toggle("activo", !rapido);
+}
+clientePasoRapidoBtn?.addEventListener("click", () => {
+  onboardingClienteModo = "rapido";
+  aplicarModoOnboardingCliente();
+});
+clientePasoCompletoBtn?.addEventListener("click", () => {
+  onboardingClienteModo = "completo";
+  aplicarModoOnboardingCliente();
+});
+aplicarModoOnboardingCliente();
+
 // También cerrar el modal si se hace clic fuera de la zona del modal
 document.getElementById("modalFormulario").addEventListener("click", (event) => {
   if (event.target.id === "modalFormulario") {
@@ -319,11 +414,11 @@ form.addEventListener("submit", async (event) => {
       ? (JSON.parse(localStorage.getItem("clientes")) || []).find(c => c.id === clienteEditandoId)?.created_at || ahora
       : ahora,
     updated_at: ahora,
-    nombre: document.getElementById("nombre").value,
-    correo: document.getElementById("correo").value,
-    telefono: document.getElementById("telefono").value,
+    nombre: document.getElementById("nombre").value.trim(),
+    correo: document.getElementById("correo").value.trim().toLowerCase() || "no indicado",
+    telefono: normalizarTelefonoCl(document.getElementById("telefono").value) || "no indicado",
     direccion: document.getElementById("direccion").value || "no indicado",
-    rut: document.getElementById("rut").value || "no indicado",
+    rut: formatearRut(document.getElementById("rut").value) || "no indicado",
     confidencial: document.getElementById("confidencial").value || "no indicado",
     link: document.getElementById("link").value || "no indicado", // 💥 ¡Nuevo campo agregado!
     cotizaciones: cotizacionesTemp.slice(),
@@ -332,9 +427,37 @@ form.addEventListener("submit", async (event) => {
       : usuario.nombre
   };
 
+  if (!cliente.nombre) {
+    mostrarNotificacion("El nombre es obligatorio", "#FF9800");
+    return;
+  }
+  if (cliente.correo === "no indicado" && cliente.telefono === "no indicado") {
+    mostrarNotificacion("En alta rápida debes ingresar correo o teléfono", "#FF9800");
+    return;
+  }
+  if (cliente.correo !== "no indicado" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente.correo)) {
+    mostrarNotificacion("Correo inválido", "#FF9800");
+    return;
+  }
+  if (cliente.rut !== "no indicado" && !validarRutChileno(cliente.rut)) {
+    mostrarNotificacion("RUT inválido", "#FF9800");
+    return;
+  }
+
   // Accedemos a la base actual de clientes
   let clientes = JSON.parse(localStorage.getItem("clientes")) || [];
+  const esNuevo = !modoEdicion;
   const accion = modoEdicion ? "modificado" : "creado";
+  const existeDuplicado = clientes.find((c) => {
+    if (modoEdicion && c.id === cliente.id) return false;
+    return (cliente.correo !== "no indicado" && c.correo === cliente.correo)
+      || (cliente.telefono !== "no indicado" && c.telefono === cliente.telefono)
+      || (cliente.rut !== "no indicado" && c.rut === cliente.rut);
+  });
+  if (existeDuplicado) {
+    mostrarNotificacion(`Posible duplicado con ${existeDuplicado.nombre}. Revisa ficha existente.`, "#FF9800");
+    return;
+  }
 
   if (modoEdicion) {
     // Si estamos editando, reemplazamos al cliente anterior
@@ -363,6 +486,9 @@ form.addEventListener("submit", async (event) => {
     resetCotizaciones();
     document.getElementById("modalFormulario").classList.add("oculto");
     cargarClientes();
+    if (esNuevo && window.abrirQuickPanel) {
+      window.abrirQuickPanel(`Onboarding cliente: ${cliente.nombre}`, generarChecklistIncorporacion(cliente));
+    }
   } else if (window.supabaseSync) {
     mostrarNotificacion(
       "Los datos no se pudieron sincronizar. Intente nuevamente",
@@ -382,8 +508,8 @@ function editarCliente(id) {
 
   // Cargamos los datos en los campos del formulario
   document.getElementById("nombre").value = cliente.nombre;
-  document.getElementById("correo").value = cliente.correo;
-  document.getElementById("telefono").value = cliente.telefono;
+  document.getElementById("correo").value = cliente.correo === "no indicado" ? "" : cliente.correo;
+  document.getElementById("telefono").value = cliente.telefono === "no indicado" ? "" : cliente.telefono;
   document.getElementById("direccion").value =
     cliente.direccion === "no indicado" ? "" : cliente.direccion;
   document.getElementById("rut").value =
@@ -445,6 +571,7 @@ function verDetalleCliente(id) {
     <p><strong>📞 Teléfono:</strong> ${cliente.telefono}</p>
     <p><strong>📍 Dirección:</strong> ${cliente.direccion || "No indicada"}</p>
     <p><strong>🆔 RUT:</strong> ${cliente.rut || "No indicado"}</p>
+    <p><strong>📊 Completitud:</strong> ${scoreCompletitudCliente(cliente)}%</p>
     <p><strong>📝 Notas:</strong> ${cliente.confidencial || "Sin observaciones"}</p>
     <p><strong>📂 Carpeta:</strong> ${cliente.link ? `<a href="${cliente.link}" target="_blank" class="drive-btn"><img src="drive_button.png" alt="Google Drive" class="drive-icon"></a>` : "No disponible"}</p>
     <p class="full-span"><strong>📑 Cotizaciones:</strong></p>
@@ -504,4 +631,25 @@ busquedaInput.addEventListener("input", e => {
   cargarClientes();
 });
 
-cargarClientes();
+window.filtrarClientesIncompletos = function () {
+  mostrarSoloIncompletos = true;
+  paginaClientes = 1;
+  cargarClientes();
+};
+
+window.mostrarTodosClientes = function () {
+  mostrarSoloIncompletos = false;
+  paginaClientes = 1;
+  cargarClientes();
+};
+
+(async function inicializarClientes() {
+  try {
+    if (window.supabaseSync?.pullTabla) {
+      await window.supabaseSync.pullTabla("clientes");
+    }
+  } catch (_) {
+    // fallback local si falla sync remota
+  }
+  cargarClientes();
+})();
