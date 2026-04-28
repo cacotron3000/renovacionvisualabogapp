@@ -52,6 +52,13 @@
           <span class="search-shortcut">/</span>
           <div id="busquedaGlobalResultados" class="oculto"></div>
         </div>
+        <div class="header-filtros-rapidos">
+          <button type="button" class="mini-boton" data-quick-filter="sincliente:true tipo:gestión">Sin cliente</button>
+          <button type="button" class="mini-boton" data-quick-filter="vencehoy:true tipo:gestión">Vence hoy</button>
+          <button type="button" class="mini-boton" data-quick-filter="mias:true tipo:gestión">Asignadas a mí</button>
+          <button type="button" class="mini-boton" data-quick-filter="sinaccion:true tipo:gestión">Sin próxima acción</button>
+          <button type="button" class="mini-boton" data-quick-filter="accion:vencida tipo:gestión">Acción vencida</button>
+        </div>
       </div>
     </div>
     <div id="notificacionesWrapper" class="notif-wrapper oculto">
@@ -83,18 +90,20 @@
   <div id="app" class="oculto">
     <!-- MENÚ: Navegación principal -->
     <nav class="sidebar">
+      <div class="sidebar-group-label">Workspace</div>
       <button id="toggleSidebar" class="sidebar-toggle"><i class="fa-sharp fa-solid fa-bars"></i></button>
       <!-- Cada botón representa una vista distinta. Se usarán para mostrar/ocultar secciones -->
       <button data-tab="dashboard" class="tab active"><i class="fa-sharp fa-solid fa-chart-line"></i><span> Dashboard</span></button>
-      <button data-tab="hoy" class="tab"><i class="fa-sharp fa-solid fa-calendar-day"></i><span> Hoy</span></button>
       <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
-      <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span> Tareas</span><span id="tareasDiaCantidad">0</span></button>
-      <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span> Tareas internas</span></button>
-      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span> Clientes</span></button>
-      <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span> Generador</span></button>
+      <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
+      <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
+      <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
+      <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
+      <div class="sidebar-group-label">Administración</div>
       <button id="tabUsuarios" data-tab="usuarios" class="tab oculto"><i class="fa-sharp fa-solid fa-users"></i><span> Usuarios</span></button>
       <button id="toggleTema" class="tab"><i class="fa-sharp fa-solid fa-moon"></i><span> Oscuro</span></button>
       <button id="abrirConfiguracion" class="tab"><i class="fa-sharp fa-solid fa-gear"></i><span> Configuración</span></button>
+      <button id="iniciarPresentacion" class="tab"><i class="fa-sharp fa-solid fa-display"></i><span> Presentación</span></button>
       <button id="cerrarSesion" class="tab"><i class="fa-sharp fa-solid fa-right-from-bracket"></i><span> Cerrar sesión</span></button>
     </nav>
 
@@ -102,6 +111,16 @@
     <main class="contenido">
       <!-- ========== SECCION 1: Dashboard ==========-->
       <section id="vista-dashboard" class="vista">
+  <div class="workspace-hero dashboard-card">
+    <h1>Dashboard</h1>
+    <p>Prioriza riesgos, próximos hitos y trabajo crítico del equipo.</p>
+  </div>
+  <div class="kpi-strip">
+    <article class="kpi-item"><span>Vencimientos hoy</span><strong id="kpiVencimientosHoy">0</strong></article>
+    <article class="kpi-item"><span>Riesgo alto</span><strong id="kpiRiesgoAlto">0</strong></article>
+    <article class="kpi-item"><span>Carga del equipo</span><strong id="kpiCargaEquipo">0%</strong></article>
+    <article class="kpi-item"><span>Casos activos</span><strong id="kpiCasosActivos">0</strong></article>
+  </div>
   <div class="dashboard-row">
     <div class="dashboard-card ancho-2-4">
       <h2><i class="fa-sharp fa-solid fa-users"></i> Miembros del equipo</h2>
@@ -139,28 +158,6 @@
   </div>
 
 </section>
-
-      <!-- SECCION HOY -->
-      <section id="vista-hoy" class="vista oculto">
-        <div class="dashboard-card">
-          <h2><i class="fa-sharp fa-solid fa-calendar-day"></i> Bandeja de hoy</h2>
-          <div id="hoyFiltros" class="hoy-filtros">
-            <button class="mini-boton" data-hoy-filtro="todos">Todos</button>
-            <button class="mini-boton" data-hoy-filtro="hoy">Hoy</button>
-            <button class="mini-boton" data-hoy-filtro="vencidas">Vencidas</button>
-            <button class="mini-boton" data-hoy-filtro="semana">Semana</button>
-            <select id="hoyResponsableFiltro" class="mini-boton">
-              <option value="">Responsable: todos</option>
-            </select>
-            <button id="hoyExportSemanal" class="mini-boton">Exportar semanal</button>
-          </div>
-          <div id="hoyResumenCarga"></div>
-          <div id="hoyCalendarioSemanal"></div>
-          <div id="hoyKanban"></div>
-          <div id="hoyAuditoria"></div>
-          <div id="hoyLista"></div>
-        </div>
-      </section>
 
       <!-- Panel lateral rápido -->
       <aside id="quickPanel" class="oculto">
@@ -208,9 +205,10 @@
       <!-- SECCION GENERADOR -->
       <section id="vista-generador" class="vista oculto">
         <div class="section-header">
-          <h1><i class="fa-sharp fa-solid fa-file-signature"></i> Generador de escritos</h1>
+          <h1><i class="fa-sharp fa-solid fa-file-signature"></i> Documentos y automatizaciones</h1>
         </div>
         <div class="dashboard-card generador-card">
+          <p class="generador-helper">Flujo recomendado: Selecciona plantilla → completa datos → revisa versión final → genera documento.</p>
           <div class="generador-native-wrap">
             <div id="generadorMount" class="generador-native-mount"></div>
           </div>
@@ -231,11 +229,12 @@
       </section>
 
       <!-- SECCION AUDIENCIAS -->
-      <section id="vista-audiencias" class="vista oculto">
-        <div class="section-header">
-          <h1><i class="fa-sharp fa-solid fa-gavel"></i> Audiencias</h1>
-          <button id="nuevaAudienciaBtn" class="boton">+ Nueva audiencia</button>
-        </div>
+	      <section id="vista-audiencias" class="vista oculto">
+	        <div class="section-header">
+	          <h1><i class="fa-sharp fa-solid fa-gavel"></i> Audiencias</h1>
+	          <button id="syncAudienciasGoogleBtn" class="mini-boton"><i class="fa-sharp fa-solid fa-calendar-check"></i> Sincronizar Google</button>
+	          <button id="nuevaAudienciaBtn" class="boton">+ Nueva audiencia</button>
+	        </div>
         <div class="dashboard-card">
           <div id="audienciasLista"></div>
           <button id="toggleAudienciasArchivadas" class="boton">Mostrar audiencias archivadas</button>
@@ -255,6 +254,26 @@
 
 
     </main>
+  </div>
+  <button id="quickActionFab" class="quick-action-fab" title="Acciones rápidas"><i class="fa-sharp fa-solid fa-plus"></i></button>
+  <div id="quickActionMenu" class="quick-action-menu oculto">
+    <button id="qaNuevaTarea"><i class="fa-sharp fa-solid fa-clipboard-list"></i>Nueva tarea</button>
+    <button id="qaNuevoCliente"><i class="fa-sharp fa-solid fa-user-plus"></i>Nuevo cliente</button>
+    <button id="qaNuevaAudiencia"><i class="fa-sharp fa-solid fa-gavel"></i>Nueva audiencia</button>
+    <button id="qaBuscar"><i class="fa-sharp fa-solid fa-magnifying-glass"></i>Buscar (Shift+Space)</button>
+  </div>
+  <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
+    <button class="tab" data-tab="audiencias"><i class="fa-sharp fa-solid fa-gavel"></i><span>Audiencias</span></button>
+    <button class="tab" data-tab="clientes"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
+    <button class="tab" data-tab="tareas"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span></button>
+    <button class="tab" data-tab="dashboard"><i class="fa-sharp fa-solid fa-table-columns"></i><span>Más</span></button>
+  </nav>
+  <div id="commandPalette" class="command-palette oculto" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+    <div class="command-palette-dialog">
+      <h3 id="commandPaletteTitle">Ir a…</h3>
+      <input type="search" id="commandPaletteInput" placeholder="Escribe un comando o sección..." />
+      <div id="commandPaletteResults"></div>
+    </div>
   </div>
 
 
@@ -500,6 +519,7 @@
     <input type="text" id="tarea-titulo" placeholder="Título de la gestión" required>
     <textarea id="tarea-descripcion" placeholder="Descripción"></textarea>
     <input type="text" id="tarea-proxima-accion" placeholder="Próxima acción (obligatoria)" required>
+    <input type="text" id="tarea-tags" placeholder="Tags (ej: area:familia, urgencia:alta)">
 
     <select id="tarea-expediente" required>
       <option value="">Seleccionar caso</option>
@@ -532,26 +552,32 @@
     <span id="modalCerrar" class="modal-cerrar">×</span>
     <h3><i class="fa-sharp fa-solid fa-user-plus"></i> Agregar un Cliente</h3></br>
     <form id="clienteForm">
+      <div class="onboarding-switch">
+        <button type="button" class="mini-boton" id="clientePasoRapidoBtn">Alta rápida</button>
+        <button type="button" class="mini-boton" id="clientePasoCompletoBtn">Ficha completa</button>
+      </div>
       <label for="nombre">Nombre:</label>
       <input type="text" id="nombre" required />
 
       <label for="correo">Correo:</label>
-      <input type="email" id="correo" required />
+      <input type="email" id="correo" />
 
       <label for="telefono">Teléfono:</label>
-      <input type="tel" id="telefono" required />
+      <input type="tel" id="telefono" />
 
-      <label for="direccion">Dirección:</label>
-      <input type="text" id="direccion" />
+      <div id="clienteCamposCompletos">
+        <label for="direccion">Dirección:</label>
+        <input type="text" id="direccion" />
 
-      <label for="rut">RUT:</label>
-      <input type="text" id="rut" />
+        <label for="rut">RUT:</label>
+        <input type="text" id="rut" />
 
-      <label for="confidencial">Notas:</label>
-      <textarea id="confidencial"></textarea>
+        <label for="confidencial">Notas:</label>
+        <textarea id="confidencial"></textarea>
 
-      <label for="link">Carpeta:</label>
-      <input type="url" id="link" />
+        <label for="link">Carpeta:</label>
+        <input type="url" id="link" />
+      </div>
 
       <div id="cotizacionesWrapper">
         <label>Cotizaciones:</label>
@@ -634,6 +660,8 @@
       <input type="date" id="tareaDiaFechaFin" placeholder="Fecha de término (opcional)">
       <label for="tareaDiaProximaAccion">Próxima acción *</label>
       <input type="text" id="tareaDiaProximaAccion" required placeholder="Siguiente paso concreto">
+      <label for="tareaDiaTags">Tags</label>
+      <input type="text" id="tareaDiaTags" placeholder="Ej: tipo:seguimiento, riesgo:plazo">
       <button type="submit" class="boton">Guardar</button>
     </form>
   </div>
@@ -678,6 +706,8 @@
       <input type="date" id="tareaInternaFechaFin" placeholder="Fecha de término (opcional)">
       <label for="tareaInternaProximaAccion">Próxima acción *</label>
       <input type="text" id="tareaInternaProximaAccion" required placeholder="Siguiente paso concreto">
+      <label for="tareaInternaTags">Tags</label>
+      <input type="text" id="tareaInternaTags" placeholder="Ej: area:laboral, urgencia:media">
       <button type="submit" class="boton">Guardar</button>
     </form>
   </div>
@@ -847,14 +877,28 @@
       <option value="DMY">DD/MM/AAAA</option>
       <option value="YMD">AAAA-MM-DD</option>
     </select>
-    <label for="configFormatoHora">Formato de hora</label>
-    <select id="configFormatoHora">
-      <option value="24">24 horas</option>
-      <option value="12">12 horas</option>
-    </select>
-    <button id="guardarConfiguracion" class="boton">Guardar</button>
-  </div>
-</div>
+	    <label for="configFormatoHora">Formato de hora</label>
+	    <select id="configFormatoHora">
+	      <option value="24">24 horas</option>
+	      <option value="12">12 horas</option>
+	    </select>
+	    <hr style="margin:14px 0;border:none;border-top:1px solid #d0d7de;">
+	    <h4 style="margin-bottom:8px;">Respaldo y sincronización</h4>
+	    <p style="font-size:.9rem;margin-bottom:8px;">Exporta un JSON local o importa un JSON para sincronizarlo con la base de datos cPanel.</p>
+	    <div class="config-sync-actions">
+	      <button id="exportarJsonLocalBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-download"></i> Exportar JSON local</button>
+	      <button id="importarJsonLocalBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-upload"></i> Importar JSON y sincronizar</button>
+	      <button id="sincronizarGoogleCalendarBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-calendar-check"></i> Sincronizar Google Calendar</button>
+	      <input id="importarJsonLocalInput" type="file" accept="application/json,.json" class="oculto" />
+	    </div>
+	    <hr style="margin:14px 0;border:none;border-top:1px solid #d0d7de;">
+	    <h4 style="margin-bottom:8px;">Preferencias de recordatorio por usuario</h4>
+	    <p style="font-size:.9rem;margin-bottom:8px;">Define hora y canal de recordatorio para cada miembro del equipo.</p>
+	    <div id="prefsRecordatorioUsers" class="prefs-recordatorio-users"></div>
+	    <button id="guardarPrefsRecordatorioBtn" class="mini-boton" type="button"><i class="fa-sharp fa-solid fa-bell"></i> Guardar preferencias</button>
+	    <button id="guardarConfiguracion" class="boton">Guardar</button>
+	  </div>
+	</div>
 
 <!-- AQUI ESTARAN NUESTROS SCRIPT A VINCULAR-->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
