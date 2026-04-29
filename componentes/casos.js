@@ -53,7 +53,7 @@ function alternarCamposCaso() {
 
   if (campoTribunal) campoTribunal.required = esJudicial;
   if (campoRitRol) campoRitRol.required = esJudicial;
-  if (campoProximaAudiencia) campoProximaAudiencia.required = esJudicial;
+  if (campoProximaAudiencia) campoProximaAudiencia.required = false;
   if (casoMateria) casoMateria.required = esJudicial;
   if (campoArea) campoArea.required = !esJudicial;
 
@@ -113,10 +113,48 @@ function cargarCasos() {
           const extra = c.tipo === 'judicial'
             ? `Materia: ${c.materia || '-'} · Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}${c.etapaActual ? ` · Etapa: ${c.etapaActual}` : ''}`
             : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'} · Próx. hito: ${c.fechaHito || '-'}`;
-          return `<div class="element-card"><strong>${c.titulo}</strong><br><small>${badgeTipo(c.tipo)} · Estado: ${c.estado || '-'} · Prioridad: ${c.prioridad || '-'}</small><br><small>Cliente: ${cliente?.nombre || '-'} · Responsable: ${c.responsable || '-'}</small><br><small>${extra}</small><br><small>Inicio: ${c.fechaInicio || '-'} · Última gestión: ${c.ultimaGestion || '-'} · Honorarios: ${c.honorarios || '-'}</small><br><small>${c.descripcion || ''}</small></div>`;
+          return `<div class="element-card caso-item" data-id="${c.id}"><strong>${c.titulo} (${cliente?.nombre || '-'})</strong><br><small>${badgeTipo(c.tipo)} · Estado: ${c.estado || '-'} · Prioridad: ${c.prioridad || '-'}</small><br><small>Cliente: ${cliente?.nombre || '-'} · Responsable: ${c.responsable || '-'}</small><br><small>${extra}</small><br><small>Inicio: ${c.fechaInicio || '-'} · Última gestión: ${c.ultimaGestion || '-'} · Honorarios: ${c.honorarios || '-'}</small><br><small>${c.descripcion || ''}</small></div>`;
         })
         .join('')
     : '<p>No hay casos registrados.</p>';
+
+  casosLista.querySelectorAll('.caso-item').forEach((card) => {
+    card.addEventListener('click', () => abrirDetalleCaso(Number(card.dataset.id)));
+  });
+}
+
+function abrirDetalleCaso(id) {
+  const casos = JSON.parse(localStorage.getItem('casos') || '[]');
+  const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
+  const caso = casos.find((x) => Number(x.id) === Number(id));
+  if (!caso || !window.abrirQuickPanel) return;
+  const cliente = clientes.find((c) => Number(c.id) === Number(caso.clienteId));
+  const html = `
+    <div class="quick-form">
+      <label>Título</label><input id="qpCasoTitulo" value="${caso.titulo || ''}" />
+      <label>Estado</label><input id="qpCasoEstado" value="${caso.estado || ''}" />
+      <label>Responsable</label><input id="qpCasoResponsable" value="${caso.responsable || ''}" />
+      <label>Fecha inicio</label><input type="date" id="qpCasoInicio" value="${caso.fechaInicio || ''}" />
+      <label>Última gestión</label><input type="date" id="qpCasoUltima" value="${caso.ultimaGestion || ''}" />
+      <label>Cliente asociado</label><input value="${cliente?.nombre || '-'}" disabled />
+      <label>Descripción</label><textarea id="qpCasoDescripcion">${caso.descripcion || ''}</textarea>
+      <button class="boton" id="qpGuardarCasoBtn">Guardar cambios</button>
+    </div>
+  `;
+  window.abrirQuickPanel(`Caso: ${caso.titulo}`, html);
+  const btn = document.getElementById('qpGuardarCasoBtn');
+  btn?.addEventListener('click', async () => {
+    caso.titulo = document.getElementById('qpCasoTitulo')?.value.trim() || caso.titulo;
+    caso.estado = document.getElementById('qpCasoEstado')?.value.trim() || caso.estado;
+    caso.responsable = document.getElementById('qpCasoResponsable')?.value.trim() || '';
+    caso.fechaInicio = document.getElementById('qpCasoInicio')?.value || '';
+    caso.ultimaGestion = document.getElementById('qpCasoUltima')?.value || '';
+    caso.descripcion = document.getElementById('qpCasoDescripcion')?.value.trim() || '';
+    const actualizados = casos.map((x) => (Number(x.id) === Number(caso.id) ? caso : x));
+    localStorage.setItem('casos', JSON.stringify(actualizados));
+    if (window.supabaseSync?.pushRegistro) await window.supabaseSync.pushRegistro('casos', caso);
+    cargarCasos();
+  });
 }
 
 abrirCasoFormBtn?.addEventListener('click', () => {
@@ -176,6 +214,7 @@ casoForm?.addEventListener('submit', async (e) => {
 });
 
 window.cargarCasos = cargarCasos;
+window.abrirDetalleCaso = abrirDetalleCaso;
 alternarCamposCaso();
 alternarBloqueEtapasJudiciales();
 cargarCasos();

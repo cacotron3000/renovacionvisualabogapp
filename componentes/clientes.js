@@ -565,6 +565,8 @@ function verDetalleCliente(id) {
   const modalTexto = document.getElementById("modalTexto");
 
   // Usamos innerHTML para permitir enlaces clickeables
+  const casos = JSON.parse(localStorage.getItem("casos") || "[]")
+    .filter((x) => Number(x.clienteId) === Number(cliente.id));
   let html = `
     <p><strong>👤 Nombre:</strong> ${cliente.nombre}</p>
     <p><strong>📧 Correo:</strong> ${cliente.correo}</p>
@@ -574,6 +576,10 @@ function verDetalleCliente(id) {
     <p><strong>📊 Completitud:</strong> ${scoreCompletitudCliente(cliente)}%</p>
     <p><strong>📝 Notas:</strong> ${cliente.confidencial || "Sin observaciones"}</p>
     <p><strong>📂 Carpeta:</strong> ${cliente.link ? `<a href="${cliente.link}" target="_blank" class="drive-btn"><img src="drive_button.png" alt="Google Drive" class="drive-icon"></a>` : "No disponible"}</p>
+    <p class="full-span"><strong>📁 Casos asociados:</strong></p>
+    <ul class="cotizacion-detalle full-span">
+      ${casos.map((c) => `<li><a href="#" onclick="window.cambiarVista('casos'); window.abrirDetalleCaso && window.abrirDetalleCaso(${c.id}); return false;">${c.titulo}</a></li>`).join("") || "<li>Sin casos asociados</li>"}
+    </ul>
     <p class="full-span"><strong>📑 Cotizaciones:</strong></p>
     <ul class="cotizacion-detalle full-span">
       ${
