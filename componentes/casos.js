@@ -110,10 +110,14 @@ function cargarCasos() {
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
         .map((c) => {
           const cliente = clientes.find((x) => Number(x.id) === Number(c.clienteId));
-          const extra = c.tipo === 'judicial'
-            ? `Materia: ${c.materia || '-'} · Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}${c.etapaActual ? ` · Etapa: ${c.etapaActual}` : ''}`
-            : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'} · Próx. hito: ${c.fechaHito || '-'}`;
-          return `<div class="element-card caso-item" data-id="${c.id}"><strong>${c.titulo} (${cliente?.nombre || '-'})</strong><br><small>${badgeTipo(c.tipo)} · Estado: ${c.estado || '-'} · Prioridad: ${c.prioridad || '-'}</small><br><small>Cliente: ${cliente?.nombre || '-'} · Responsable: ${c.responsable || '-'}</small><br><small>${extra}</small><br><small>Inicio: ${c.fechaInicio || '-'} · Última gestión: ${c.ultimaGestion || '-'} · Honorarios: ${c.honorarios || '-'}</small><br><small>${c.descripcion || ''}</small></div>`;
+          const resumen = c.tipo === 'judicial'
+            ? `RIT/Rol: ${c.ritRol || '-'} · Tribunal: ${c.tribunal || '-'}`
+            : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'}`;
+          const idx = ETAPAS_FAMILIA_LABORAL.indexOf(c.etapaActual || '');
+          const timeline = c.tipo === 'judicial' && (c.materia === 'familia' || c.materia === 'laboral')
+            ? `<div class="timeline-caso">${ETAPAS_FAMILIA_LABORAL.map((e, i) => `<span class="timeline-item ${idx >= i ? 'completada' : 'pendiente'}">${idx > i ? '✅' : idx === i ? '🟢' : '⚪'} ${e}</span>`).join('')}</div>`
+            : '';
+          return `<div class="element-card caso-item" data-id="${c.id}"><strong>${c.titulo} (${cliente?.nombre || '-'})</strong><br><small>${resumen}</small>${timeline}</div>`;
         })
         .join('')
     : '<p>No hay casos registrados.</p>';
@@ -132,13 +136,25 @@ function abrirDetalleCaso(id) {
   const html = `
     <div class="quick-form">
       <label>Título</label><input id="qpCasoTitulo" value="${caso.titulo || ''}" />
+      <label>Tipo</label><input value="${caso.tipo || '-'}" disabled />
+      <label>Materia</label><input id="qpCasoMateria" value="${caso.materia || ''}" />
       <label>Estado</label><input id="qpCasoEstado" value="${caso.estado || ''}" />
+      <label>RIT/Rol</label><input id="qpCasoRitRol" value="${caso.ritRol || ''}" />
+      <label>Tribunal</label><input id="qpCasoTribunal" value="${caso.tribunal || ''}" />
+      <label>Etapa actual</label><input id="qpCasoEtapa" value="${caso.etapaActual || ''}" />
       <label>Responsable</label><input id="qpCasoResponsable" value="${caso.responsable || ''}" />
       <label>Fecha inicio</label><input type="date" id="qpCasoInicio" value="${caso.fechaInicio || ''}" />
       <label>Última gestión</label><input type="date" id="qpCasoUltima" value="${caso.ultimaGestion || ''}" />
+      <label>Próxima audiencia</label><input type="date" id="qpCasoAudiencia" value="${caso.proximaAudiencia || ''}" />
+      <label>Área (no judicial)</label><input id="qpCasoArea" value="${caso.area || ''}" />
+      <label>Contraparte</label><input id="qpCasoContraparte" value="${caso.contraparte || ''}" />
+      <label>Fecha hito</label><input type="date" id="qpCasoHito" value="${caso.fechaHito || ''}" />
       <label>Cliente asociado</label><input value="${cliente?.nombre || '-'}" disabled />
       <label>Descripción</label><textarea id="qpCasoDescripcion">${caso.descripcion || ''}</textarea>
-      <button class="boton" id="qpGuardarCasoBtn">Guardar cambios</button>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="boton" id="qpGuardarCasoBtn">Guardar cambios</button>
+        <button class="boton" id="qpEliminarCasoBtn" style="background:#b91c1c;">Eliminar caso</button>
+      </div>
     </div>
   `;
   window.abrirQuickPanel(`Caso: ${caso.titulo}`, html);
@@ -146,13 +162,29 @@ function abrirDetalleCaso(id) {
   btn?.addEventListener('click', async () => {
     caso.titulo = document.getElementById('qpCasoTitulo')?.value.trim() || caso.titulo;
     caso.estado = document.getElementById('qpCasoEstado')?.value.trim() || caso.estado;
+    caso.materia = document.getElementById('qpCasoMateria')?.value.trim() || '';
+    caso.ritRol = document.getElementById('qpCasoRitRol')?.value.trim() || '';
+    caso.tribunal = document.getElementById('qpCasoTribunal')?.value.trim() || '';
+    caso.etapaActual = document.getElementById('qpCasoEtapa')?.value.trim() || '';
     caso.responsable = document.getElementById('qpCasoResponsable')?.value.trim() || '';
     caso.fechaInicio = document.getElementById('qpCasoInicio')?.value || '';
     caso.ultimaGestion = document.getElementById('qpCasoUltima')?.value || '';
+    caso.proximaAudiencia = document.getElementById('qpCasoAudiencia')?.value || '';
+    caso.area = document.getElementById('qpCasoArea')?.value.trim() || '';
+    caso.contraparte = document.getElementById('qpCasoContraparte')?.value.trim() || '';
+    caso.fechaHito = document.getElementById('qpCasoHito')?.value || '';
     caso.descripcion = document.getElementById('qpCasoDescripcion')?.value.trim() || '';
     const actualizados = casos.map((x) => (Number(x.id) === Number(caso.id) ? caso : x));
     localStorage.setItem('casos', JSON.stringify(actualizados));
     if (window.supabaseSync?.pushRegistro) await window.supabaseSync.pushRegistro('casos', caso);
+    cargarCasos();
+  });
+  document.getElementById('qpEliminarCasoBtn')?.addEventListener('click', async () => {
+    if (!confirm('¿Eliminar este caso?')) return;
+    const restantes = casos.filter((x) => Number(x.id) !== Number(caso.id));
+    localStorage.setItem('casos', JSON.stringify(restantes));
+    if (window.supabaseSync?.deleteRegistro) await window.supabaseSync.deleteRegistro('casos', caso.id);
+    window.cerrarQuickPanel?.();
     cargarCasos();
   });
 }
