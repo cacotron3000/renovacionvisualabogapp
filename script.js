@@ -351,6 +351,7 @@ function refrescarDatos(modulos = ["clientes", "tareasDia", "audiencias", "dashb
   if (modulos.includes("audiencias") && typeof cargarAudienciasArchivadas === "function") cargarAudienciasArchivadas();
   if (modulos.includes("dashboard") && typeof actualizarDashboard === "function") actualizarDashboard();
   if (modulos.includes("dashboard")) actualizarKpiResumen();
+  if (modulos.includes("dashboard")) renderInboxUniversal();
   if (modulos.includes("hoy")) renderVistaHoy();
   if (modulos.includes("notificaciones")) actualizarCentroNotificaciones();
 }
@@ -904,6 +905,59 @@ function actualizarKpiResumen() {
   });
 }
 
+function obtenerWorkInboxItems() {
+  const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+  const clienteNombre = (id) => clientes.find((c) => Number(c.id) === Number(id))?.nombre || "-";
+  const tareas = (JSON.parse(localStorage.getItem("tareas") || "[]")).map((t) => ({
+    tipo: "tarea",
+    titulo: t.titulo || t.descripcion || "Sin título",
+    due_date: t.fin || "",
+    responsable: t.asignadoA || "-",
+    cliente: clienteNombre(t.clienteId),
+    estado: (t.estado || "pendiente").toLowerCase(),
+  }));
+  const diarias = (JSON.parse(localStorage.getItem("tareasDia") || "[]")).map((t) => ({
+    tipo: "tarea_diaria",
+    titulo: t.texto || "Sin título",
+    due_date: t.fechaFin || "",
+    responsable: Array.isArray(t.asignadosA) ? t.asignadosA.join(", ") : "-",
+    cliente: clienteNombre(t.clienteId),
+    estado: "pendiente",
+  }));
+  const internas = (JSON.parse(localStorage.getItem("tareasInternas") || "[]")).map((t) => ({
+    tipo: "tarea_interna",
+    titulo: t.texto || "Sin título",
+    due_date: t.fechaFin || "",
+    responsable: Array.isArray(t.asignadosA) ? t.asignadosA.join(", ") : "-",
+    cliente: clienteNombre(t.clienteId),
+    estado: "pendiente",
+  }));
+  const audiencias = (JSON.parse(localStorage.getItem("audiencias") || "[]")).map((a) => ({
+    tipo: "audiencia",
+    titulo: a.titulo || "Sin título",
+    due_date: a.fecha || "",
+    responsable: a.abogado || "-",
+    cliente: clienteNombre(a.clienteId),
+    estado: (a.estado || "pendiente").toLowerCase(),
+  }));
+  return [...tareas, ...diarias, ...internas, ...audiencias].sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
+}
+
+function renderInboxUniversal() {
+  const lista = document.getElementById("workInboxLista");
+  const filtroTipo = document.getElementById("workInboxTipoFiltro");
+  const filtroEstado = document.getElementById("workInboxEstadoFiltro");
+  if (!lista || !filtroTipo || !filtroEstado) return;
+  const tipo = filtroTipo.value || "todos";
+  const estado = filtroEstado.value || "todos";
+  const items = obtenerWorkInboxItems()
+    .filter((x) => tipo === "todos" || x.tipo === tipo)
+    .filter((x) => estado === "todos" || x.estado.includes(estado));
+  lista.innerHTML = items.length
+    ? items.slice(0, 80).map((x) => `<div class="hoy-item"><strong>[${x.tipo}]</strong> ${x.titulo}<br><small>Vence: ${x.due_date || "-"} · Responsable: ${x.responsable || "-"} · Cliente: ${x.cliente || "-"}</small></div>`).join("")
+    : "<p>Sin elementos para este filtro.</p>";
+}
+
 // Manejo de capas de modales para permitir abrir un modal sobre otro
 let modalZIndex = 12000;
 function ajustarPosicionModalesVisibles() {
@@ -1178,6 +1232,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const commandPalette = document.getElementById("commandPalette");
   const commandPaletteInput = document.getElementById("commandPaletteInput");
   const commandPaletteResults = document.getElementById("commandPaletteResults");
+  const workInboxTipoFiltro = document.getElementById("workInboxTipoFiltro");
+  const workInboxEstadoFiltro = document.getElementById("workInboxEstadoFiltro");
   iniciarSincronizacionTemaGeneradorNativo();
   window.updateSyncStatus = (state = "syncing", text = "") => {
     if (!syncStatus) return;
@@ -1311,6 +1367,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
   window.actualizarKPIsWorkspace = actualizarKPIsWorkspace;
   actualizarKPIsWorkspace();
+  renderInboxUniversal();
+  workInboxTipoFiltro?.addEventListener("change", renderInboxUniversal);
+  workInboxEstadoFiltro?.addEventListener("change", renderInboxUniversal);
 
   function abrirCommandPalette() {
     if (!commandPalette || !commandPaletteInput || !commandPaletteResults) return;

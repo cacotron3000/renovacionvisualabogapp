@@ -1797,6 +1797,16 @@ textarea:focus-visible {
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.15);
 }
 
+.work-inbox-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.work-inbox-toolbar select {
+  min-width: 180px;
+}
+
 .quick-panel-header {
   background: linear-gradient(180deg, #f8fafc, #eef2f7);
   display: flex;
