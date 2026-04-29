@@ -10,7 +10,6 @@
     "clientes",
     "expedientes",
     "casosarchivados",
-    "tareas",
     "gestionesarchivadas",
     "diario",
     "diarioarchivadas",
@@ -68,6 +67,7 @@
   }
 
   async function pullTabla(tabla) {
+    if (tabla === "tareas") return;
     try {
       const { data } = await apiRequest("pull_table", { query: { table: tabla, limit: 1500, offset: 0 } });
       if (Array.isArray(data)) {
@@ -87,6 +87,7 @@
         query: { tables: TABLAS.join(","), limit: 1500, offset: 0 },
       });
       TABLAS.forEach((tabla) => {
+        if (tabla === "tareas") return;
         if (Array.isArray(data?.[tabla])) {
           const actual = JSON.parse(localStorage.getItem(localKey(tabla)) || "[]");
           const mapa = new Map(actual.map((x) => [x.id, x]));
@@ -233,6 +234,35 @@
         body: { min },
       });
       return Number(data?.numero || 0);
+    },
+    async syncGoogleCalendarAudiencias() {
+      const { data } = await apiRequest("sync_google_calendar_audiencias", {
+        method: "POST",
+        body: {},
+      });
+      await pullTabla("audiencias");
+      return data || {};
+    },
+    async syncAudienciaToGoogle(audiencia) {
+      const { data } = await apiRequest("upsert_google_event_from_audiencia", {
+        method: "POST",
+        body: { audiencia },
+      });
+      return data || {};
+    },
+    async sendTaskAssignmentEmail(task) {
+      const { data } = await apiRequest("send_task_assignment_email", {
+        method: "POST",
+        body: { task },
+      });
+      return data || {};
+    },
+    async sendTaskDueReminders() {
+      const { data } = await apiRequest("send_task_due_reminders", {
+        method: "POST",
+        body: {},
+      });
+      return data || {};
     },
   };
 
