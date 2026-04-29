@@ -352,6 +352,7 @@ function refrescarDatos(modulos = ["clientes", "tareasDia", "audiencias", "dashb
   if (modulos.includes("dashboard") && typeof actualizarDashboard === "function") actualizarDashboard();
   if (modulos.includes("dashboard")) actualizarKpiResumen();
   if (modulos.includes("dashboard")) renderInboxUniversal();
+  if (modulos.includes("dashboard")) renderIaOperacional();
   if (modulos.includes("hoy")) renderVistaHoy();
   if (modulos.includes("notificaciones")) actualizarCentroNotificaciones();
 }
@@ -958,6 +959,92 @@ function renderInboxUniversal() {
     : "<p>Sin elementos para este filtro.</p>";
 }
 
+function sugerirProximaAccionDesdeContexto(item) {
+  const titulo = String(item?.titulo || "").toLowerCase();
+  const tipo = String(item?.tipo || "");
+  if (tipo === "audiencia") return "Confirmar comparecencia, revisar antecedentes y preparar minuta previa.";
+  if (titulo.includes("venc") || titulo.includes("plazo")) return "Bloquear 60 minutos hoy y cerrar entrega antes de las 17:00.";
+  if (titulo.includes("cliente")) return "Contactar cliente, confirmar estado y registrar acuerdo por escrito.";
+  if (tipo === "tarea_interna") return "Definir responsable principal y fecha de control intermedio.";
+  return "Definir siguiente paso concreto, responsable y fecha límite en esta jornada.";
+}
+
+function autoEtiquetarTextoOperacional(item) {
+  const txt = `${item?.titulo || ""} ${item?.tipo || ""}`.toLowerCase();
+  const tags = [];
+  if (txt.includes("audiencia")) tags.push("tipo:audiencia");
+  if (txt.includes("plazo") || txt.includes("venc")) tags.push("riesgo:plazo");
+  if (txt.includes("cliente")) tags.push("riesgo:cliente");
+  if (item?.tipo === "tarea_interna") tags.push("area:interna");
+  if (!tags.length) tags.push("tipo:seguimiento");
+  return tags;
+}
+
+function generarResumenResponsables() {
+  const items = obtenerWorkInboxItems().filter((x) => !String(x.estado || "").includes("termin"));
+  const mapa = new Map();
+  items.forEach((x) => {
+    const r = String(x.responsable || "-").trim() || "-";
+    if (!mapa.has(r)) mapa.set(r, []);
+    mapa.get(r).push(x);
+  });
+  return Array.from(mapa.entries()).map(([responsable, arr]) => ({
+    responsable,
+    top5: arr
+      .sort((a, b) => String(a.due_date || "").localeCompare(String(b.due_date || "")))
+      .slice(0, 5),
+  }));
+}
+
+function detectarAnomaliasOperacionales() {
+  const clientes = JSON.parse(localStorage.getItem("clientes") || "[]");
+  const tareas = JSON.parse(localStorage.getItem("tareas") || "[]");
+  const tareasDia = JSON.parse(localStorage.getItem("tareasDia") || "[]");
+  const umbralDias = 14;
+  const hoy = new Date();
+  const anomalias = [];
+  clientes.forEach((c) => {
+    const refs = []
+      .concat(tareas.filter((t) => Number(t.clienteId) === Number(c.id)).map((t) => t.updated_at || t.created_at || t.fin))
+      .concat(tareasDia.filter((t) => Number(t.clienteId) === Number(c.id)).map((t) => t.creadoEn || t.fechaFin));
+    const ultima = refs.filter(Boolean).sort().slice(-1)[0];
+    if (!ultima) {
+      anomalias.push(`Cliente "${c.nombre}" sin movimientos registrados.`);
+      return;
+    }
+    const d = parseFechaLocal(String(ultima).slice(0, 10)) || new Date(ultima);
+    const dias = Math.floor((hoy - d) / 86400000);
+    if (dias > umbralDias) anomalias.push(`Cliente "${c.nombre}" sin movimiento hace ${dias} días.`);
+  });
+  return anomalias.slice(0, 12);
+}
+
+function renderIaOperacional() {
+  const sugerenciasEl = document.getElementById("iaSugerenciasLista");
+  const anomaliasEl = document.getElementById("iaAnomaliasLista");
+  if (!sugerenciasEl || !anomaliasEl) return;
+  const pendientesCriticos = obtenerWorkInboxItems()
+    .filter((x) => !String(x.estado || "").includes("termin"))
+    .sort((a, b) => String(a.due_date || "").localeCompare(String(b.due_date || "")))
+    .slice(0, 5);
+  const sugerencias = pendientesCriticos.map((x) => ({
+    titulo: x.titulo,
+    sugerencia: sugerirProximaAccionDesdeContexto(x),
+    tags: autoEtiquetarTextoOperacional(x),
+  }));
+  const resumen = generarResumenResponsables();
+  sugerenciasEl.innerHTML = `
+    <h4>Top 5 acciones críticas</h4>
+    ${sugerencias.map((s) => `<div class="hoy-item"><strong>${s.titulo}</strong><br><small>${s.sugerencia}</small><br><small>Tags sugeridos: ${s.tags.join(", ")}</small></div>`).join("") || "<p>Sin tareas críticas.</p>"}
+    <h4>Resumen por responsable</h4>
+    ${resumen.map((r) => `<div class="hoy-item"><strong>${r.responsable}</strong><br><small>${r.top5.map((x) => `${x.titulo} (${x.due_date || "-"})`).join(" · ") || "Sin pendientes"}</small></div>`).join("")}
+  `;
+  const anomalias = detectarAnomaliasOperacionales();
+  anomaliasEl.innerHTML = anomalias.length
+    ? anomalias.map((a) => `<div class="hoy-item"><small>⚠️ ${a}</small></div>`).join("")
+    : "<p>Sin anomalías detectadas.</p>";
+}
+
 // Manejo de capas de modales para permitir abrir un modal sobre otro
 let modalZIndex = 12000;
 function ajustarPosicionModalesVisibles() {
@@ -1368,6 +1455,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.actualizarKPIsWorkspace = actualizarKPIsWorkspace;
   actualizarKPIsWorkspace();
   renderInboxUniversal();
+  renderIaOperacional();
   workInboxTipoFiltro?.addEventListener("change", renderInboxUniversal);
   workInboxEstadoFiltro?.addEventListener("change", renderInboxUniversal);
 
