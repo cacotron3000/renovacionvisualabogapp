@@ -90,6 +90,7 @@
       <button data-tab="audiencias" class="tab"><i class="fa-sharp fa-solid fa-gavel"></i><span> Audiencias</span><span id="audienciasCantidad">0</span></button>
       <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
       <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
+      <button data-tab="casos" class="tab"><i class="fa-sharp fa-solid fa-folder-open"></i><span>Casos</span></button>
       <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
       <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
       <div class="sidebar-group-label">Administración</div>
@@ -224,6 +225,15 @@
 
     <!-- Aquí se insertarán los clientes con JS -->
   </section>
+
+<section id="vista-casos" class="vista oculto">
+  <div class="section-header">
+    <h1><i class="fa-sharp fa-solid fa-folder-open"></i> Casos</h1>
+    <button id="abrirCasoFormBtn" class="boton">+ Nuevo caso</button>
+  </div>
+  <input type="text" id="buscarCasos" placeholder="Buscar casos..." />
+  <div id="casosLista"></div>
+</section>
 
       
       <!-- SECCION GENERADOR -->
@@ -383,6 +393,49 @@
       </div>
 
       <button type="submit" class="boton">Guardar Cliente</button>
+    </form>
+  </div>
+</div>
+
+<div id="modalCasoFormulario" class="modal oculto">
+  <div class="modal-contenido">
+    <span id="cerrarCasoFormBtn" class="modal-cerrar">×</span>
+    <h3><i class="fa-sharp fa-solid fa-folder-plus"></i> Registrar caso</h3>
+    <form id="casoForm">
+      <label for="casoClienteId">Cliente *</label>
+      <select id="casoClienteId" required></select>
+      <label for="casoTitulo">Título del caso *</label>
+      <input type="text" id="casoTitulo" required />
+      <label for="casoTipo">Tipo de asunto *</label>
+      <select id="casoTipo" required>
+        <option value="judicial">Judicial</option>
+        <option value="no_judicial">No judicial</option>
+      </select>
+      <label for="casoEstado">Estado</label>
+      <select id="casoEstado">
+        <option value="abierto">Abierto</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="cerrado">Cerrado</option>
+      </select>
+      <div id="camposJudiciales">
+        <label for="casoTribunal">Tribunal</label>
+        <input type="text" id="casoTribunal" />
+        <label for="casoRitRol">RIT/Rol</label>
+        <input type="text" id="casoRitRol" />
+        <label for="casoProximaAudiencia">Próxima audiencia</label>
+        <input type="date" id="casoProximaAudiencia" />
+      </div>
+      <div id="camposNoJudiciales" class="oculto">
+        <label for="casoArea">Área</label>
+        <input type="text" id="casoArea" placeholder="Ej: compliance, contratos, cobranza" />
+        <label for="casoContraparte">Contraparte</label>
+        <input type="text" id="casoContraparte" />
+        <label for="casoFechaHito">Fecha próximo hito</label>
+        <input type="date" id="casoFechaHito" />
+      </div>
+      <label for="casoDescripcion">Descripción</label>
+      <textarea id="casoDescripcion"></textarea>
+      <button type="submit" class="boton">Guardar caso</button>
     </form>
   </div>
 </div>
@@ -692,6 +745,7 @@
 <script src="cotizacion.js"></script>
 <script src="componentes/audiencias.js"></script>
 <script src="componentes/clientes.js"></script>
+<script src="componentes/casos.js"></script>
 <script src="componentes/tareas_internas.js"></script>
 <script src="componentes/dashboard.js"></script>
 <script src="componentes/usuarios.js"></script>

@@ -1145,6 +1145,8 @@ function cambiarVista(vistaId) {
   // 1) Recargar datos antes de mostrar la sección
   if (vistaId === "clientes" && typeof cargarClientes === "function") {
     cargarClientes();
+  } else if (vistaId === "casos" && typeof cargarCasos === "function") {
+    cargarCasos();
   } else if (vistaId === "dashboard" && typeof actualizarDashboard === "function") {
     actualizarDashboard();
   } else if (vistaId === "internas" && typeof cargarTareasInternas === "function") {
