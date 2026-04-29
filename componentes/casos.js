@@ -85,11 +85,11 @@ function alternarBloqueEtapasJudiciales() {
   if (bloqueEtapasJudiciales) bloqueEtapasJudiciales.classList.toggle('oculto', !aplica);
   if (!casoEtapaActual) return;
   if (!aplica) {
-    casoEtapaActual.innerHTML = '';
+    casoEtapaActual.value = '';
     if (casoTimeline) casoTimeline.innerHTML = '';
     return;
   }
-  casoEtapaActual.innerHTML = `<option value="">Seleccionar etapa</option>${ETAPAS_FAMILIA_LABORAL.map((e) => `<option value="${e}">${e}</option>`).join('')}`;
+  renderTimeline(casoEtapaActual.value || '');
 }
 
 function badgeTipo(tipo) {

@@ -91,6 +91,7 @@
       <button data-tab="tareas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-list"></i><span>Tareas</span><span id="tareasNavCantidad">0</span></button>
       <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
       <button data-tab="casos" class="tab"><i class="fa-sharp fa-solid fa-folder-open"></i><span>Casos</span></button>
+      <button data-tab="ia" class="tab"><i class="fa-sharp fa-solid fa-wand-magic-sparkles"></i><span>IA operacional</span></button>
       <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
       <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
       <div class="sidebar-group-label">Administración</div>
@@ -171,17 +172,6 @@
     <div id="workInboxLista"></div>
   </div>
 
-  <div class="dashboard-row">
-    <div class="dashboard-card ancho-2-4">
-      <h2><i class="fa-sharp fa-solid fa-wand-magic-sparkles"></i> IA operacional</h2>
-      <div id="iaSugerenciasLista"></div>
-    </div>
-    <div class="dashboard-card ancho-2-4">
-      <h2><i class="fa-sharp fa-solid fa-triangle-exclamation"></i> Anomalías detectadas</h2>
-      <div id="iaAnomaliasLista"></div>
-    </div>
-  </div>
-
 </section>
 
       <!-- Panel lateral rápido -->
@@ -229,10 +219,26 @@
 <section id="vista-casos" class="vista oculto">
   <div class="section-header">
     <h1><i class="fa-sharp fa-solid fa-folder-open"></i> Casos</h1>
-    <button id="abrirCasoFormBtn" class="boton">+ Nuevo caso</button>
+    <button id="abrirCasoFormBtn" class="boton"><i class="fa-sharp fa-solid fa-plus"></i> Nuevo caso</button>
   </div>
   <input type="text" id="buscarCasos" placeholder="Buscar casos..." />
   <div id="casosLista"></div>
+</section>
+
+<section id="vista-ia" class="vista oculto">
+  <div class="section-header">
+    <h1><i class="fa-sharp fa-solid fa-wand-magic-sparkles"></i> IA operacional</h1>
+  </div>
+  <div class="dashboard-row">
+    <div class="dashboard-card ancho-2-4">
+      <h2>Sugerencias</h2>
+      <div id="iaSugerenciasLista"></div>
+    </div>
+    <div class="dashboard-card ancho-2-4">
+      <h2>Anomalías detectadas</h2>
+      <div id="iaAnomaliasLista"></div>
+    </div>
+  </div>
 </section>
 
       
@@ -450,7 +456,16 @@
         <input type="date" id="casoProximaAudiencia" />
         <div id="bloqueEtapasJudiciales" class="oculto">
           <label for="casoEtapaActual">Etapa actual</label>
-          <select id="casoEtapaActual"></select>
+          <select id="casoEtapaActual">
+            <option value="">Seleccionar etapa</option>
+            <option value="Elaboración demanda">Elaboración demanda</option>
+            <option value="Presentación demanda">Presentación demanda</option>
+            <option value="Contestación demanda">Contestación demanda</option>
+            <option value="Audiencia preparatoria">Audiencia preparatoria</option>
+            <option value="Audiencia de juicio">Audiencia de juicio</option>
+            <option value="Sentencia">Sentencia</option>
+            <option value="Recursos">Recursos</option>
+          </select>
           <div id="casoTimeline" class="timeline-caso"></div>
         </div>
       </div>
