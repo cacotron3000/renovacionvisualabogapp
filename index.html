@@ -417,6 +417,20 @@
         <option value="en_proceso">En proceso</option>
         <option value="cerrado">Cerrado</option>
       </select>
+      <label for="casoResponsable">Responsable</label>
+      <input type="text" id="casoResponsable" placeholder="Abogado/a a cargo" />
+      <label for="casoFechaInicio">Fecha de inicio</label>
+      <input type="date" id="casoFechaInicio" />
+      <label for="casoPrioridad">Prioridad</label>
+      <select id="casoPrioridad">
+        <option value="alta">Alta</option>
+        <option value="media" selected>Media</option>
+        <option value="baja">Baja</option>
+      </select>
+      <label for="casoHonorarios">Honorarios estimados</label>
+      <input type="number" id="casoHonorarios" min="0" step="1000" />
+      <label for="casoUltimaGestion">Última gestión</label>
+      <input type="date" id="casoUltimaGestion" />
       <div id="camposJudiciales">
         <label for="casoTribunal">Tribunal</label>
         <input type="text" id="casoTribunal" />

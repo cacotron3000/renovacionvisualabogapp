@@ -9,6 +9,12 @@ const casoClienteId = document.getElementById('casoClienteId');
 const casoTipo = document.getElementById('casoTipo');
 const camposJudiciales = document.getElementById('camposJudiciales');
 const camposNoJudiciales = document.getElementById('camposNoJudiciales');
+const campoTribunal = document.getElementById('casoTribunal');
+const campoRitRol = document.getElementById('casoRitRol');
+const campoProximaAudiencia = document.getElementById('casoProximaAudiencia');
+const campoArea = document.getElementById('casoArea');
+const campoContraparte = document.getElementById('casoContraparte');
+const campoFechaHito = document.getElementById('casoFechaHito');
 
 let filtroCasos = '';
 
@@ -16,18 +22,40 @@ function poblarClientesCaso() {
   if (!casoClienteId) return;
   const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
   casoClienteId.innerHTML = '<option value="">Seleccionar cliente</option>';
-  clientes.sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||''),'es')).forEach((c) => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.nombre;
-    casoClienteId.appendChild(opt);
-  });
+  clientes
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
+    .forEach((c) => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.nombre;
+      casoClienteId.appendChild(opt);
+    });
 }
 
 function alternarCamposCaso() {
   const tipo = casoTipo?.value || 'judicial';
-  if (camposJudiciales) camposJudiciales.classList.toggle('oculto', tipo !== 'judicial');
-  if (camposNoJudiciales) camposNoJudiciales.classList.toggle('oculto', tipo === 'judicial');
+  const esJudicial = tipo === 'judicial';
+  if (camposJudiciales) camposJudiciales.classList.toggle('oculto', !esJudicial);
+  if (camposNoJudiciales) camposNoJudiciales.classList.toggle('oculto', esJudicial);
+
+  if (campoTribunal) campoTribunal.required = esJudicial;
+  if (campoRitRol) campoRitRol.required = esJudicial;
+  if (campoProximaAudiencia) campoProximaAudiencia.required = esJudicial;
+  if (campoArea) campoArea.required = !esJudicial;
+
+  if (esJudicial) {
+    if (campoArea) campoArea.value = '';
+    if (campoContraparte) campoContraparte.value = '';
+    if (campoFechaHito) campoFechaHito.value = '';
+  } else {
+    if (campoTribunal) campoTribunal.value = '';
+    if (campoRitRol) campoRitRol.value = '';
+    if (campoProximaAudiencia) campoProximaAudiencia.value = '';
+  }
+}
+
+function badgeTipo(tipo) {
+  return tipo === 'judicial' ? '⚖️ Judicial' : '🧾 No judicial';
 }
 
 function cargarCasos() {
@@ -35,22 +63,28 @@ function cargarCasos() {
   const casos = JSON.parse(localStorage.getItem('casos') || '[]');
   const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
   const filtrados = casos.filter((c) => {
-    const txt = `${c.titulo || ''} ${c.tipo || ''} ${c.estado || ''}`.toLowerCase();
+    const txt = `${c.titulo || ''} ${c.tipo || ''} ${c.estado || ''} ${c.responsable || ''}`.toLowerCase();
     return txt.includes(filtroCasos.toLowerCase());
   });
-  casosLista.innerHTML = filtrados.length ? filtrados.map((c) => {
-    const cliente = clientes.find((x) => Number(x.id) === Number(c.clienteId));
-    const extra = c.tipo === 'judicial'
-      ? `Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}`
-      : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'} · Próx. hito: ${c.fechaHito || '-'}`;
-    return `<div class="element-card"><strong>${c.titulo}</strong><br><small>Cliente: ${cliente?.nombre || '-'} · Tipo: ${c.tipo} · Estado: ${c.estado}</small><br><small>${extra}</small><br><small>${c.descripcion || ''}</small></div>`;
-  }).join('') : '<p>No hay casos registrados.</p>';
+
+  casosLista.innerHTML = filtrados.length
+    ? filtrados
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+        .map((c) => {
+          const cliente = clientes.find((x) => Number(x.id) === Number(c.clienteId));
+          const extra = c.tipo === 'judicial'
+            ? `Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}`
+            : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'} · Próx. hito: ${c.fechaHito || '-'}`;
+          return `<div class="element-card"><strong>${c.titulo}</strong><br><small>${badgeTipo(c.tipo)} · Estado: ${c.estado || '-'} · Prioridad: ${c.prioridad || '-'}</small><br><small>Cliente: ${cliente?.nombre || '-'} · Responsable: ${c.responsable || '-'}</small><br><small>${extra}</small><br><small>Inicio: ${c.fechaInicio || '-'} · Última gestión: ${c.ultimaGestion || '-'} · Honorarios: ${c.honorarios || '-'}</small><br><small>${c.descripcion || ''}</small></div>`;
+        })
+        .join('')
+    : '<p>No hay casos registrados.</p>';
 }
 
 abrirCasoFormBtn?.addEventListener('click', () => {
   poblarClientesCaso();
-  alternarCamposCaso();
   casoForm?.reset();
+  alternarCamposCaso();
   modalCasoFormulario?.classList.remove('oculto');
 });
 
@@ -73,6 +107,11 @@ casoForm?.addEventListener('submit', async (e) => {
     titulo: document.getElementById('casoTitulo')?.value.trim(),
     tipo: document.getElementById('casoTipo')?.value || 'judicial',
     estado: document.getElementById('casoEstado')?.value || 'abierto',
+    responsable: document.getElementById('casoResponsable')?.value.trim(),
+    fechaInicio: document.getElementById('casoFechaInicio')?.value || '',
+    prioridad: document.getElementById('casoPrioridad')?.value || 'media',
+    honorarios: Number(document.getElementById('casoHonorarios')?.value || 0),
+    ultimaGestion: document.getElementById('casoUltimaGestion')?.value || '',
     descripcion: document.getElementById('casoDescripcion')?.value.trim(),
     tribunal: document.getElementById('casoTribunal')?.value.trim(),
     ritRol: document.getElementById('casoRitRol')?.value.trim(),
@@ -82,14 +121,18 @@ casoForm?.addEventListener('submit', async (e) => {
     fechaHito: document.getElementById('casoFechaHito')?.value || '',
     created_at: new Date().toISOString(),
   };
+
   if (!nuevo.clienteId || !nuevo.titulo) return;
+
   const casos = JSON.parse(localStorage.getItem('casos') || '[]');
   casos.push(nuevo);
   localStorage.setItem('casos', JSON.stringify(casos));
   if (window.supabaseSync?.pushRegistro) await window.supabaseSync.pushRegistro('casos', nuevo);
+
   modalCasoFormulario?.classList.add('oculto');
   cargarCasos();
 });
 
 window.cargarCasos = cargarCasos;
+alternarCamposCaso();
 cargarCasos();
