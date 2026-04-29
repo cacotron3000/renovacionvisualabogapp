@@ -15,8 +15,21 @@ const campoProximaAudiencia = document.getElementById('casoProximaAudiencia');
 const campoArea = document.getElementById('casoArea');
 const campoContraparte = document.getElementById('casoContraparte');
 const campoFechaHito = document.getElementById('casoFechaHito');
+const casoMateria = document.getElementById('casoMateria');
+const bloqueEtapasJudiciales = document.getElementById('bloqueEtapasJudiciales');
+const casoEtapaActual = document.getElementById('casoEtapaActual');
+const casoTimeline = document.getElementById('casoTimeline');
 
 let filtroCasos = '';
+const ETAPAS_FAMILIA_LABORAL = [
+  'Elaboración demanda',
+  'Presentación demanda',
+  'Contestación demanda',
+  'Audiencia preparatoria',
+  'Audiencia de juicio',
+  'Sentencia',
+  'Recursos',
+];
 
 function poblarClientesCaso() {
   if (!casoClienteId) return;
@@ -41,6 +54,7 @@ function alternarCamposCaso() {
   if (campoTribunal) campoTribunal.required = esJudicial;
   if (campoRitRol) campoRitRol.required = esJudicial;
   if (campoProximaAudiencia) campoProximaAudiencia.required = esJudicial;
+  if (casoMateria) casoMateria.required = esJudicial;
   if (campoArea) campoArea.required = !esJudicial;
 
   if (esJudicial) {
@@ -52,6 +66,30 @@ function alternarCamposCaso() {
     if (campoRitRol) campoRitRol.value = '';
     if (campoProximaAudiencia) campoProximaAudiencia.value = '';
   }
+  alternarBloqueEtapasJudiciales();
+}
+
+function renderTimeline(etapaSeleccionada = '') {
+  if (!casoTimeline) return;
+  const idx = ETAPAS_FAMILIA_LABORAL.indexOf(etapaSeleccionada);
+  casoTimeline.innerHTML = ETAPAS_FAMILIA_LABORAL.map((etapa, i) => {
+    const estado = idx >= i ? 'completada' : 'pendiente';
+    const icono = idx > i ? '✅' : idx === i ? '🟢' : '⚪';
+    return `<div class="timeline-item ${estado}">${icono} ${etapa}</div>`;
+  }).join('');
+}
+
+function alternarBloqueEtapasJudiciales() {
+  const mat = casoMateria?.value || '';
+  const aplica = mat === 'familia' || mat === 'laboral';
+  if (bloqueEtapasJudiciales) bloqueEtapasJudiciales.classList.toggle('oculto', !aplica);
+  if (!casoEtapaActual) return;
+  if (!aplica) {
+    casoEtapaActual.innerHTML = '';
+    if (casoTimeline) casoTimeline.innerHTML = '';
+    return;
+  }
+  casoEtapaActual.innerHTML = `<option value="">Seleccionar etapa</option>${ETAPAS_FAMILIA_LABORAL.map((e) => `<option value="${e}">${e}</option>`).join('')}`;
 }
 
 function badgeTipo(tipo) {
@@ -73,7 +111,7 @@ function cargarCasos() {
         .map((c) => {
           const cliente = clientes.find((x) => Number(x.id) === Number(c.clienteId));
           const extra = c.tipo === 'judicial'
-            ? `Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}`
+            ? `Materia: ${c.materia || '-'} · Tribunal: ${c.tribunal || '-'} · RIT/Rol: ${c.ritRol || '-'} · Próx. audiencia: ${c.proximaAudiencia || '-'}${c.etapaActual ? ` · Etapa: ${c.etapaActual}` : ''}`
             : `Área: ${c.area || '-'} · Contraparte: ${c.contraparte || '-'} · Próx. hito: ${c.fechaHito || '-'}`;
           return `<div class="element-card"><strong>${c.titulo}</strong><br><small>${badgeTipo(c.tipo)} · Estado: ${c.estado || '-'} · Prioridad: ${c.prioridad || '-'}</small><br><small>Cliente: ${cliente?.nombre || '-'} · Responsable: ${c.responsable || '-'}</small><br><small>${extra}</small><br><small>Inicio: ${c.fechaInicio || '-'} · Última gestión: ${c.ultimaGestion || '-'} · Honorarios: ${c.honorarios || '-'}</small><br><small>${c.descripcion || ''}</small></div>`;
         })
@@ -94,6 +132,8 @@ modalCasoFormulario?.addEventListener('click', (e) => {
 });
 
 casoTipo?.addEventListener('change', alternarCamposCaso);
+casoMateria?.addEventListener('change', alternarBloqueEtapasJudiciales);
+casoEtapaActual?.addEventListener('change', (e) => renderTimeline(e.target.value || ''));
 buscarCasos?.addEventListener('input', (e) => {
   filtroCasos = e.target.value || '';
   cargarCasos();
@@ -114,8 +154,10 @@ casoForm?.addEventListener('submit', async (e) => {
     ultimaGestion: document.getElementById('casoUltimaGestion')?.value || '',
     descripcion: document.getElementById('casoDescripcion')?.value.trim(),
     tribunal: document.getElementById('casoTribunal')?.value.trim(),
+    materia: document.getElementById('casoMateria')?.value || '',
     ritRol: document.getElementById('casoRitRol')?.value.trim(),
     proximaAudiencia: document.getElementById('casoProximaAudiencia')?.value || '',
+    etapaActual: document.getElementById('casoEtapaActual')?.value || '',
     area: document.getElementById('casoArea')?.value.trim(),
     contraparte: document.getElementById('casoContraparte')?.value.trim(),
     fechaHito: document.getElementById('casoFechaHito')?.value || '',
@@ -135,4 +177,5 @@ casoForm?.addEventListener('submit', async (e) => {
 
 window.cargarCasos = cargarCasos;
 alternarCamposCaso();
+alternarBloqueEtapasJudiciales();
 cargarCasos();

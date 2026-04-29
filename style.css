@@ -2395,3 +2395,8 @@ body.presentacion-mode .dashboard-card {
     bottom: 76px;
   }
 }
+
+.timeline-caso { margin-top: 8px; display: grid; gap: 6px; }
+.timeline-item { font-size: .86rem; padding: 6px 8px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.timeline-item.completada { background: #ecfdf5; border-color: #86efac; }
+.timeline-item.pendiente { background: #f8fafc; color: #64748b; }

@@ -432,12 +432,27 @@
       <label for="casoUltimaGestion">Última gestión</label>
       <input type="date" id="casoUltimaGestion" />
       <div id="camposJudiciales">
+        <label for="casoMateria">Materia judicial *</label>
+        <select id="casoMateria">
+          <option value="">Seleccionar materia</option>
+          <option value="civil">Civil</option>
+          <option value="familia">Familia</option>
+          <option value="laboral">Laboral</option>
+          <option value="policia_local">Policía local</option>
+          <option value="corte_apelaciones">Corte de Apelaciones</option>
+          <option value="corte_suprema">Corte Suprema</option>
+        </select>
         <label for="casoTribunal">Tribunal</label>
         <input type="text" id="casoTribunal" />
         <label for="casoRitRol">RIT/Rol</label>
         <input type="text" id="casoRitRol" />
         <label for="casoProximaAudiencia">Próxima audiencia</label>
         <input type="date" id="casoProximaAudiencia" />
+        <div id="bloqueEtapasJudiciales" class="oculto">
+          <label for="casoEtapaActual">Etapa actual</label>
+          <select id="casoEtapaActual"></select>
+          <div id="casoTimeline" class="timeline-caso"></div>
+        </div>
       </div>
       <div id="camposNoJudiciales" class="oculto">
         <label for="casoArea">Área</label>
