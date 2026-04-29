@@ -423,8 +423,8 @@
         <option value="en_proceso">En proceso</option>
         <option value="cerrado">Cerrado</option>
       </select>
-      <label for="casoResponsable">Responsable</label>
-      <input type="text" id="casoResponsable" placeholder="Abogado/a a cargo" />
+      <label for="casoResponsable">Abogado/a responsable</label>
+      <select id="casoResponsable"></select>
       <label for="casoFechaInicio">Fecha de inicio</label>
       <input type="date" id="casoFechaInicio" />
       <label for="casoPrioridad">Prioridad</label>
@@ -479,7 +479,10 @@
       </div>
       <label for="casoDescripcion">Descripción</label>
       <textarea id="casoDescripcion"></textarea>
-      <button type="submit" class="boton">Guardar caso</button>
+      <div style="display:flex; gap:8px;">
+        <button type="submit" class="boton" id="guardarCasoBtn">Guardar caso</button>
+        <button type="button" class="boton oculto" id="eliminarCasoBtn" style="background:#b91c1c;">Eliminar caso</button>
+      </div>
     </form>
   </div>
 </div>

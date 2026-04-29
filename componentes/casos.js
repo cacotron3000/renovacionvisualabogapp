@@ -19,8 +19,11 @@ const casoMateria = document.getElementById('casoMateria');
 const bloqueEtapasJudiciales = document.getElementById('bloqueEtapasJudiciales');
 const casoEtapaActual = document.getElementById('casoEtapaActual');
 const casoTimeline = document.getElementById('casoTimeline');
+const eliminarCasoBtn = document.getElementById('eliminarCasoBtn');
+const guardarCasoBtn = document.getElementById('guardarCasoBtn');
 
 let filtroCasos = '';
+let casoEditandoId = null;
 const ETAPAS_FAMILIA_LABORAL = [
   'Elaboración demanda',
   'Presentación demanda',
@@ -43,6 +46,24 @@ function poblarClientesCaso() {
       opt.textContent = c.nombre;
       casoClienteId.appendChild(opt);
     });
+}
+
+async function poblarResponsablesCaso() {
+  const sel = document.getElementById('casoResponsable');
+  if (!sel) return;
+  let opciones = [];
+  if (window.supabaseAuth?.fetchUsers) {
+    try {
+      const users = await window.supabaseAuth.fetchUsers();
+      opciones = users.map((u) => u.nombre).filter(Boolean);
+    } catch (_) {}
+  }
+  if (!opciones.length) {
+    const tareas = JSON.parse(localStorage.getItem('tareasDia') || '[]');
+    const internas = JSON.parse(localStorage.getItem('tareasInternas') || '[]');
+    opciones = [...new Set([...tareas.flatMap((t) => t.asignadosA || []), ...internas.flatMap((t) => t.asignadosA || [])].filter(Boolean))];
+  }
+  sel.innerHTML = `<option value="">Sin asignar</option>${opciones.map((n) => `<option value="${n}">${n}</option>`).join('')}`;
 }
 
 function alternarCamposCaso() {
@@ -122,76 +143,48 @@ function cargarCasos() {
         .join('')
     : '<p>No hay casos registrados.</p>';
 
-  casosLista.querySelectorAll('.caso-item').forEach((card) => {
-    card.addEventListener('click', () => abrirDetalleCaso(Number(card.dataset.id)));
-  });
+  casosLista.querySelectorAll('.caso-item').forEach((card) => card.addEventListener('click', () => abrirCasoEnFormulario(Number(card.dataset.id))));
 }
 
-function abrirDetalleCaso(id) {
+async function abrirCasoEnFormulario(id) {
   const casos = JSON.parse(localStorage.getItem('casos') || '[]');
-  const clientes = JSON.parse(localStorage.getItem('clientes') || '[]');
   const caso = casos.find((x) => Number(x.id) === Number(id));
-  if (!caso || !window.abrirQuickPanel) return;
-  const cliente = clientes.find((c) => Number(c.id) === Number(caso.clienteId));
-  const html = `
-    <div class="quick-form">
-      <label>Título</label><input id="qpCasoTitulo" value="${caso.titulo || ''}" />
-      <label>Tipo</label><input value="${caso.tipo || '-'}" disabled />
-      <label>Materia</label><input id="qpCasoMateria" value="${caso.materia || ''}" />
-      <label>Estado</label><input id="qpCasoEstado" value="${caso.estado || ''}" />
-      <label>RIT/Rol</label><input id="qpCasoRitRol" value="${caso.ritRol || ''}" />
-      <label>Tribunal</label><input id="qpCasoTribunal" value="${caso.tribunal || ''}" />
-      <label>Etapa actual</label><input id="qpCasoEtapa" value="${caso.etapaActual || ''}" />
-      <label>Responsable</label><input id="qpCasoResponsable" value="${caso.responsable || ''}" />
-      <label>Fecha inicio</label><input type="date" id="qpCasoInicio" value="${caso.fechaInicio || ''}" />
-      <label>Última gestión</label><input type="date" id="qpCasoUltima" value="${caso.ultimaGestion || ''}" />
-      <label>Próxima audiencia</label><input type="date" id="qpCasoAudiencia" value="${caso.proximaAudiencia || ''}" />
-      <label>Área (no judicial)</label><input id="qpCasoArea" value="${caso.area || ''}" />
-      <label>Contraparte</label><input id="qpCasoContraparte" value="${caso.contraparte || ''}" />
-      <label>Fecha hito</label><input type="date" id="qpCasoHito" value="${caso.fechaHito || ''}" />
-      <label>Cliente asociado</label><input value="${cliente?.nombre || '-'}" disabled />
-      <label>Descripción</label><textarea id="qpCasoDescripcion">${caso.descripcion || ''}</textarea>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <button class="boton" id="qpGuardarCasoBtn">Guardar cambios</button>
-        <button class="boton" id="qpEliminarCasoBtn" style="background:#b91c1c;">Eliminar caso</button>
-      </div>
-    </div>
-  `;
-  window.abrirQuickPanel(`Caso: ${caso.titulo}`, html);
-  const btn = document.getElementById('qpGuardarCasoBtn');
-  btn?.addEventListener('click', async () => {
-    caso.titulo = document.getElementById('qpCasoTitulo')?.value.trim() || caso.titulo;
-    caso.estado = document.getElementById('qpCasoEstado')?.value.trim() || caso.estado;
-    caso.materia = document.getElementById('qpCasoMateria')?.value.trim() || '';
-    caso.ritRol = document.getElementById('qpCasoRitRol')?.value.trim() || '';
-    caso.tribunal = document.getElementById('qpCasoTribunal')?.value.trim() || '';
-    caso.etapaActual = document.getElementById('qpCasoEtapa')?.value.trim() || '';
-    caso.responsable = document.getElementById('qpCasoResponsable')?.value.trim() || '';
-    caso.fechaInicio = document.getElementById('qpCasoInicio')?.value || '';
-    caso.ultimaGestion = document.getElementById('qpCasoUltima')?.value || '';
-    caso.proximaAudiencia = document.getElementById('qpCasoAudiencia')?.value || '';
-    caso.area = document.getElementById('qpCasoArea')?.value.trim() || '';
-    caso.contraparte = document.getElementById('qpCasoContraparte')?.value.trim() || '';
-    caso.fechaHito = document.getElementById('qpCasoHito')?.value || '';
-    caso.descripcion = document.getElementById('qpCasoDescripcion')?.value.trim() || '';
-    const actualizados = casos.map((x) => (Number(x.id) === Number(caso.id) ? caso : x));
-    localStorage.setItem('casos', JSON.stringify(actualizados));
-    if (window.supabaseSync?.pushRegistro) await window.supabaseSync.pushRegistro('casos', caso);
-    cargarCasos();
-  });
-  document.getElementById('qpEliminarCasoBtn')?.addEventListener('click', async () => {
-    if (!confirm('¿Eliminar este caso?')) return;
-    const restantes = casos.filter((x) => Number(x.id) !== Number(caso.id));
-    localStorage.setItem('casos', JSON.stringify(restantes));
-    if (window.supabaseSync?.deleteRegistro) await window.supabaseSync.deleteRegistro('casos', caso.id);
-    window.cerrarQuickPanel?.();
-    cargarCasos();
-  });
+  if (!caso) return;
+  await poblarClientesCaso();
+  await poblarResponsablesCaso();
+  casoEditandoId = caso.id;
+  if (guardarCasoBtn) guardarCasoBtn.textContent = 'Guardar cambios';
+  eliminarCasoBtn?.classList.remove('oculto');
+  document.getElementById('casoClienteId').value = String(caso.clienteId || '');
+  document.getElementById('casoTitulo').value = caso.titulo || '';
+  document.getElementById('casoTipo').value = caso.tipo || 'judicial';
+  document.getElementById('casoEstado').value = caso.estado || 'abierto';
+  document.getElementById('casoResponsable').value = caso.responsable || '';
+  document.getElementById('casoFechaInicio').value = caso.fechaInicio || '';
+  document.getElementById('casoPrioridad').value = caso.prioridad || 'media';
+  document.getElementById('casoHonorarios').value = caso.honorarios || '';
+  document.getElementById('casoUltimaGestion').value = caso.ultimaGestion || '';
+  document.getElementById('casoDescripcion').value = caso.descripcion || '';
+  document.getElementById('casoTribunal').value = caso.tribunal || '';
+  document.getElementById('casoMateria').value = caso.materia || '';
+  document.getElementById('casoRitRol').value = caso.ritRol || '';
+  document.getElementById('casoProximaAudiencia').value = caso.proximaAudiencia || '';
+  document.getElementById('casoEtapaActual').value = caso.etapaActual || '';
+  document.getElementById('casoArea').value = caso.area || '';
+  document.getElementById('casoContraparte').value = caso.contraparte || '';
+  document.getElementById('casoFechaHito').value = caso.fechaHito || '';
+  alternarCamposCaso();
+  renderTimeline(caso.etapaActual || '');
+  modalCasoFormulario?.classList.remove('oculto');
 }
 
 abrirCasoFormBtn?.addEventListener('click', () => {
+  casoEditandoId = null;
   poblarClientesCaso();
+  poblarResponsablesCaso();
   casoForm?.reset();
+  if (guardarCasoBtn) guardarCasoBtn.textContent = 'Guardar caso';
+  eliminarCasoBtn?.classList.add('oculto');
   alternarCamposCaso();
   modalCasoFormulario?.classList.remove('oculto');
 });
@@ -217,7 +210,7 @@ casoForm?.addEventListener('submit', async (e) => {
     titulo: document.getElementById('casoTitulo')?.value.trim(),
     tipo: document.getElementById('casoTipo')?.value || 'judicial',
     estado: document.getElementById('casoEstado')?.value || 'abierto',
-    responsable: document.getElementById('casoResponsable')?.value.trim(),
+    responsable: document.getElementById('casoResponsable')?.value || '',
     fechaInicio: document.getElementById('casoFechaInicio')?.value || '',
     prioridad: document.getElementById('casoPrioridad')?.value || 'media',
     honorarios: Number(document.getElementById('casoHonorarios')?.value || 0),
@@ -236,17 +229,38 @@ casoForm?.addEventListener('submit', async (e) => {
 
   if (!nuevo.clienteId || !nuevo.titulo) return;
 
-  const casos = JSON.parse(localStorage.getItem('casos') || '[]');
-  casos.push(nuevo);
+  let casos = JSON.parse(localStorage.getItem('casos') || '[]');
+  if (casoEditandoId) {
+    nuevo.id = casoEditandoId;
+    nuevo.created_at = casos.find((c) => Number(c.id) === Number(casoEditandoId))?.created_at || nuevo.created_at;
+    casos = casos.map((c) => (Number(c.id) === Number(casoEditandoId) ? nuevo : c));
+  } else {
+    casos.push(nuevo);
+  }
   localStorage.setItem('casos', JSON.stringify(casos));
   if (window.supabaseSync?.pushRegistro) await window.supabaseSync.pushRegistro('casos', nuevo);
 
   modalCasoFormulario?.classList.add('oculto');
+  casoEditandoId = null;
+  if (guardarCasoBtn) guardarCasoBtn.textContent = 'Guardar caso';
+  eliminarCasoBtn?.classList.add('oculto');
+  cargarCasos();
+});
+
+eliminarCasoBtn?.addEventListener('click', async () => {
+  if (!casoEditandoId || !confirm('¿Eliminar este caso?')) return;
+  const casos = JSON.parse(localStorage.getItem('casos') || '[]').filter((c) => Number(c.id) !== Number(casoEditandoId));
+  localStorage.setItem('casos', JSON.stringify(casos));
+  if (window.supabaseSync?.deleteRegistro) await window.supabaseSync.deleteRegistro('casos', casoEditandoId);
+  modalCasoFormulario?.classList.add('oculto');
+  casoEditandoId = null;
+  if (guardarCasoBtn) guardarCasoBtn.textContent = 'Guardar caso';
+  eliminarCasoBtn?.classList.add('oculto');
   cargarCasos();
 });
 
 window.cargarCasos = cargarCasos;
-window.abrirDetalleCaso = abrirDetalleCaso;
+window.abrirDetalleCaso = abrirCasoEnFormulario;
 alternarCamposCaso();
 alternarBloqueEtapasJudiciales();
 cargarCasos();
