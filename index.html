@@ -92,6 +92,7 @@
       <button data-tab="clientes" class="tab"><i class="fa-sharp fa-solid fa-user"></i><span>Clientes</span></button>
       <button data-tab="casos" class="tab"><i class="fa-sharp fa-solid fa-folder-open"></i><span>Casos</span></button>
       <button data-tab="ia" class="tab"><i class="fa-sharp fa-solid fa-wand-magic-sparkles"></i><span>IA operacional</span></button>
+      <button data-tab="inbox" class="tab"><i class="fa-sharp fa-solid fa-tower-broadcast"></i><span>Inbox universal</span></button>
       <button data-tab="generador" class="tab"><i class="fa-sharp fa-solid fa-file-signature"></i><span>Documentos</span></button>
       <button data-tab="internas" class="tab"><i class="fa-sharp fa-solid fa-clipboard-check"></i><span>Operación interna</span></button>
       <div class="sidebar-group-label">Administración</div>
@@ -152,8 +153,13 @@
     <div id="audienciasListaDashboard"></div>
   </div>
 
+</section>
+
+<section id="vista-inbox" class="vista oculto">
+  <div class="section-header">
+    <h1><i class="fa-sharp fa-solid fa-tower-broadcast"></i> Inbox universal de trabajo</h1>
+  </div>
   <div class="dashboard-card" id="workInboxPanel">
-    <h2><i class="fa-sharp fa-solid fa-tower-broadcast"></i> Inbox universal de trabajo</h2>
     <div class="work-inbox-toolbar">
       <select id="workInboxTipoFiltro">
         <option value="todos">Todos</option>
@@ -171,7 +177,6 @@
     </div>
     <div id="workInboxLista"></div>
   </div>
-
 </section>
 
       <!-- Panel lateral rápido -->
